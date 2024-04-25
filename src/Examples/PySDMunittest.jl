@@ -8,11 +8,10 @@ include("../SDfunc/coalescence.jl")
 include("../SDfunc/DSDvis.jl")
 
 
-#A comparison with PySDM and JSDM for box collision-coalescence
-
+# A comparison with PySDM and JSDM for box collision-coalescence
 
 #-------------------------
-#Variable Initialization
+# Variable Initialization
 #-------------------------
 n_sd = 2^17 # number of superdroplets
 si = pyimport("PySDM.physics").si
