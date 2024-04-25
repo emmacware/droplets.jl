@@ -1,5 +1,3 @@
 module Superdroplet
-
-# Write your package code here.
-
+# under construction!
 end
