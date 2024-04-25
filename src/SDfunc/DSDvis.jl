@@ -69,8 +69,8 @@ function binning_dsd(Xunsorted,ξunsorted,bins,t;smooth = true,scope_init = 1)
     X = Xunsorted[i]
     ξ = ξunsorted[i]
 
-    mids = 0.5*(bin_edges[1:end-1] + bin_edges[2:end])*1e6 #um
-    # mids = bin_edges[1:end-1]*1e6 #um
+    # mids = 0.5*(bin_edges[1:end-1] + bin_edges[2:end])*1e6 #um
+    mids = bin_edges[1:end-1]*1e6 #um
 
     water = zeros(length(mids))
     droplet_idx = 1

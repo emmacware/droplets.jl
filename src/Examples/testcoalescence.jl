@@ -34,7 +34,7 @@ smooth = true
 
 
 
-function run_small_alpha!(ξ,R,X,Ns,Δt,ΔV;smooth=true,kernel=golovin,radius_bins_edges=radius_bins_edges)
+function run_coalescence_box!(ξ,R,X,Ns,Δt,ΔV;smooth=true,kernel=golovin,radius_bins_edges=radius_bins_edges)
     println("Running simulation...")
     seconds = 0
 
@@ -51,11 +51,11 @@ function run_small_alpha!(ξ,R,X,Ns,Δt,ΔV;smooth=true,kernel=golovin,radius_bi
             xx,yy = binning_dsd(X,ξ,radius_bins_edges,seconds,smooth=smooth,scope_init=2)
             bins = hcat(bins,yy)
 
-            plot1 = plot!(xx,yy,lc=:red,
+            plot1 = plot!(xx,yy,lc=:black,
                 # linetype=:steppost,
                 # linewidth=2,
                 xaxis=:log,xlims=(10,10000), 
-                label="t = "*string(seconds)*" sec",legend=:outerright,
+                label="t = "*string(seconds)*" sec",legend=:topright,
                 legendtitle = string(kernel)*" kernel, "*s"$N_s$=2^"*string(Int(log2(Ns))),guidefontsize=10)
             title!("Time Evolution of the Mass Density Distribution")
             xlabel!("Droplet Radius R (μm)")
@@ -78,8 +78,8 @@ function run_small_alpha!(ξ,R,X,Ns,Δt,ΔV;smooth=true,kernel=golovin,radius_bi
     return plot1
 end
 
-plot1 = run_small_alpha!(ξstart,Rstart,Xstart,Ns,Δt,ΔV,smooth=smooth,kernel=golovin,radius_bins_edges=radius_bins_edges)
-
+plot1 = run_coalescence_box!(ξstart,Rstart,Xstart,Ns,Δt,ΔV,smooth=smooth,kernel=golovin,radius_bins_edges=radius_bins_edges)
+display(plot1)
 
 
 
@@ -111,7 +111,7 @@ plot1 = run_small_alpha!(ξstart,Rstart,Xstart,Ns,Δt,ΔV,smooth=smooth,kernel=g
 # ξstart,Rstart,Xstart,Mstart = init_ξ_const(Ns,ΔV,n0,R0,M0)
 # superdrops = create_NaCl_superdroplets(Ns,Nx,Ny,Δx,Δy,Rstart,Xstart,ξstart,Mstart)
 
-function run_small_alpha!(droplets,Ns,Δt,ΔV;smooth=true,
+function run_coalescence_box!(droplets,Ns,Δt,ΔV;smooth=true,
     kernel=golovin,radius_bins_edges=10 .^ range(log10(10*1e-6), log10(5e3*1e-6), length=128))
     
     println("Running simulation...")
@@ -133,11 +133,11 @@ function run_small_alpha!(droplets,Ns,Δt,ΔV;smooth=true,
             xx,yy = binning_dsd(droplets,radius_bins_edges,seconds,smooth=smooth,scope_init=2)
             bins = hcat(bins,yy)
 
-                plot1 = plot!(xx,yy,lc=:red,
+                plot1 = plot!(xx,yy,lc=:black,
                     # linetype=:steppost,
                     # linewidth=2,
                     xaxis=:log,xlims=(10,10000), 
-                    label="t = "*string(seconds)*" sec",legend=:outerright,
+                    label="t = "*string(seconds)*" sec",legend=:topright,
                     legendtitle = string(kernel)*" kernel, "*s"$N_s$=2^"*string(Int(log2(Ns))),guidefontsize=10)
 
                 title!("Time Evolution of the Mass Density Distribution")
@@ -166,4 +166,5 @@ function run_small_alpha!(droplets,Ns,Δt,ΔV;smooth=true,
 end
 
 
-# plot1 = run_small_alpha!(superdrops,Ns,Δt,ΔV,smooth=smooth,kernel=golovin,radius_bins_edges=radius_bins_edges)
+# plot1 = run_coalescence_box!(superdrops,Ns,Δt,ΔV,smooth=smooth,kernel=golovin,radius_bins_edges=radius_bins_edges)
+##note: superdroplet structs change in place, so will need to reinitialize to get the same results
