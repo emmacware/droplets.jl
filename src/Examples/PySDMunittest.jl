@@ -4,6 +4,7 @@ using Combinatorics
 using Distributions
 using Plots
 using PyCall
+using Interpolations # for hydrodynamic kernel/terminal velocity
 include("../SDfunc/coalescence.jl")
 include("../SDfunc/DSDvis.jl")
 
