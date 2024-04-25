@@ -1,6 +1,6 @@
-using Superdroplet
+using Droplets
 using Test
 
-@testset "Superdroplet.jl" begin
+@testset "Droplets.jl" begin
     # Write your tests here.
 end
