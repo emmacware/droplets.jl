@@ -20,11 +20,14 @@
     #golovin(R1,R2,X,Xs),               returns b*Xsum
 
 #SDM FUNCTIONS
-    #calc_Ps(droplet1,droplet2,Δt,ΔV;kernel=golovin),           returns Ps
-    #calc_Ps(R1,R2,X,Xs,Δt,ΔV,ξj,ξk;kernel=golovin),            returns Ps
-    #coalescence_timestep!(droplets,Ns,Δt,ΔV;kernel=golovin),   returns droplets
-    #coalescence_timestep!(ξ,R,X,Ns,Δt,ΔV;kernel=golovin),      returns ξ,R,X
-    #coalescence_timestep!(ξ,R,M,X,Ns,Δt,ΔV;kernel=golovin),    returns ξ,R,M,X
+    #calc_Ps(droplet1,droplet2,Δt,ΔV;kernel=golovin),                       returns Ps
+    #calc_Ps(R1,R2,X,Xs,Δt,ΔV,ξj,ξk;kernel=golovin),                        returns Ps
+    #coalescence_timestep!(droplets,Ns,Δt,ΔV;kernel=golovin),               returns droplets
+    #coalescence_timestep!(ξ,R,X,Ns,Δt,ΔV;kernel=golovin),                  returns ξ,R,X
+    #coalescence_timestep!(ξ,R,M,X,Ns,Δt,ΔV;kernel=golovin),                returns ξ,R,M,X
+    #all_or_nothing!(R1,R2,X1,X2,ξ1,ξ2,M1,M2,scale,Δt,ΔV;kernel=golovin),   returns R1,R2,X1,X2,ξ1,ξ2,M1,M2
+    #all_or_nothing!(R1,R2,X1,X2,ξ1,ξ2,scale,Δt,ΔV;kernel=golovin),         returns R1,R2,X1,X2,ξ1,ξ2
+    #all_or_nothing!(droplet1,droplet2,scale,Δt,ΔV;kernel=golovin),         returns droplet1,droplet2
 
 
 #SMALL ALPHA STUDY
@@ -533,6 +536,193 @@ function coalescence_timestep_small_alpha!(droplets,Ns,y,Δt,ΔV;kernel=golovin)
         # end
 return droplets
 end
+
+#---------------------------------------------------------
+# all_or_nothing! is the update scheme (Shima et al, 2009) given two superdroplets
+# can take two superdroplets or two sets of radius, volume, multiplicity, and ξ values
+# only set to update multiplicity, radius, and volume and solute mass
+# this is the parallelized part of the coalescence_timestep function above
+
+function all_or_nothing!(R1,R2,X1,X2,ξ1,ξ2,M1,M2,scale,Δt,ΔV;kernel=golovin)
+
+        if ξ1<ξ2
+            large1 = false
+            Rj = R2
+            Rk = R1
+            Xj = X2
+            Xk = X1
+            ξj = ξ2
+            ξk = ξ1
+            Mj = M2
+            Mk = M1
+        else
+            large1 = true
+            Rj = R1
+            Rk = R2
+            Xj = X1
+            Xk = X2
+            ξj = ξ1
+            ξk = ξ2
+            Mj = M1
+            Mk = M2
+        end			
+
+        ϕ = rand()
+        pα = scale*calc_Ps(Rj,Rk,Xj,Xk,Δt,ΔV,ξj,ξk,kernel=kernel)
+
+        if ϕ < pα - floor(pα)
+            γ = floor(pα)+1
+        else ϕ >= pα - floor(pα)
+            γ = floor(pα)
+        end
+
+        if γ == 0
+            return R1,R2,X1,X2,ξ1,ξ2,M1,M2 #return in same order as input, no changes
+        end
+
+        γ_tilde = min(γ,floor(ξj/ξk))
+        # if γ_tilde == floor(ξ[j]/ξ[k])
+        #     println("limit exceeded")
+        # end
+
+        if ξj - γ_tilde*ξk > 0
+            ξj = ξj-γ_tilde*ξk
+            Rk = (γ_tilde*Rj^3+Rk^3)^(1/3)
+            Mk = γ_tilde*Mj+Mk
+
+        elseif ξj - γ_tilde*ξk == 0
+            ξj = floor(ξk/2)
+            ξk = ξk - floor(ξk/2)
+            Rj = Rk = (γ_tilde*Rj^3+Rk^3)^(1/3)
+            Mj = Mk = γ_tilde*Mj+Mk
+        elseif ξj - ξk < 0
+            print("nooooo")
+        end
+
+    Xj = 4/3 * π * Rj^3
+    Xk = 4/3 * π * Rk^3
+
+    if large1 == true
+        return R1,R2,X1,X2,ξ1,ξ2,M1,M2
+    else
+        return R2,R1,X2,X1,ξ2,ξ1,M2,M1
+    end
+end
+
+function all_or_nothing!(R1,R2,X1,X2,ξ1,ξ2,scale,Δt,ΔV;kernel=golovin)
+
+    if ξ1<ξ2
+        large1 = false
+        Rj = R2
+        Rk = R1
+        Xj = X2
+        Xk = X1
+        ξj = ξ2
+        ξk = ξ1
+
+    else
+        large1 = true
+        Rj = R1
+        Rk = R2
+        Xj = X1
+        Xk = X2
+        ξj = ξ1
+        ξk = ξ2
+
+    end			
+
+    ϕ = rand()
+    pα = scale*calc_Ps(Rj,Rk,Xj,Xk,Δt,ΔV,ξj,ξk,kernel=kernel)
+
+    if ϕ < pα - floor(pα)
+        γ = floor(pα)+1
+    else ϕ >= pα - floor(pα)
+        γ = floor(pα)
+    end
+
+    if γ == 0
+        return R1,R2,X1,X2,ξ1,ξ2 #return in same order as input, no changes
+    end
+
+    γ_tilde = min(γ,floor(ξj/ξk))
+    # if γ_tilde == floor(ξ[j]/ξ[k])
+    #     println("limit exceeded")
+    # end
+
+    if ξj - γ_tilde*ξk > 0
+        ξj = ξj-γ_tilde*ξk
+        Rk = (γ_tilde*Rj^3+Rk^3)^(1/3)
+ 
+    elseif ξj - γ_tilde*ξk == 0
+        ξj = floor(ξk/2)
+        ξk = ξk - floor(ξk/2)
+        Rj = Rk = (γ_tilde*Rj^3+Rk^3)^(1/3)
+    elseif ξj - ξk < 0
+        print("nooooo")
+    end
+
+    Xj = 4/3 * π * Rj^3
+    Xk = 4/3 * π * Rk^3
+
+if large1 == true
+    return R1,R2,X1,X2,ξ1,ξ2
+else
+    return R2,R1,X2,X1,ξ2,ξ1
+end
+end
+
+function all_or_nothing!(droplet1,droplet2,scale,Δt,ΔV;kernel=golovin)
+    droplets = [droplet1,droplet2]
+    if droplet1.ξ<droplet2.ξ    
+        large1 = false
+        j=2
+        k=1
+    else
+        large1 = true
+        j=1
+        k=2
+    end
+
+        ϕ = rand()
+        pα = scale*calc_Ps(droplets[j],droplets[k],Δt,ΔV,kernel=kernel)
+
+
+        if ϕ < pα - floor(pα)
+            γ = floor(pα)+1
+        else ϕ >= pα - floor(pα)
+            γ = floor(pα)
+        end
+
+        if γ == 0
+            return droplet1,droplet2 #return in same order as input, no changes
+        end
+
+        γ_tilde = min(γ,floor(droplets[j].ξ/droplets[k].ξ))
+        # if γ_tilde == floor(ξ[j]/ξ[k])
+        #     println("limit exceeded")
+        # end
+
+        if droplets[j].ξ - γ_tilde*droplets[k].ξ > 0
+            droplets[j].ξ = droplets[j].ξ-γ_tilde*droplets[k].ξ
+            droplets[k].R = (γ_tilde*droplets[j].R^3+droplets[k].R^3)^(1/3)
+            droplets[k].X = 4/3*π * droplets[k].R^3
+            droplets[k].M = γ_tilde*droplets[j].M+droplets[k].M
+
+        elseif droplets[j].ξ - γ_tilde*droplets[k].ξ == 0
+            droplets[j].ξ = floor(droplets[k].ξ/2)
+            droplets[k].ξ = droplets[k].ξ - floor(droplets[k].ξ/2)
+            droplets[j].R = droplets[k].R = (γ_tilde*droplets[j].R^3+droplets[k].R^3)^(1/3)
+            droplets[j].X = droplets[k].X = 4/3*π * droplets[j].R^3
+            droplets[j].M = droplets[k].M = γ_tilde*droplets[j].M+droplets[k].M
+        elseif droplets[j].ξ - droplets[k].ξ < 0
+            print("nooooo")
+        end 
+
+    return droplet1,droplet2 #return in same order as input, changes made in place
+end
+
+
+
 
 
 ###########################################################
