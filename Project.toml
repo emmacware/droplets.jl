@@ -3,6 +3,9 @@ uuid = "410e754a-0d3e-432f-bd69-cc9df980427a"
 authors = ["Emma Ware", "Obin Sturm", "Adele Igel"]
 version = "0.1.0-DEV"
 
+[deps]
+Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
+
 [compat]
 julia = "1.6.7"
 

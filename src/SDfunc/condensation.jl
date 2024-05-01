@@ -197,7 +197,7 @@ function condense_and_calc_Sv!(qvarray,T,P,ρ,Δtg,ΔgridV,Nx,Ny,grid_dict)
             
         end
     end
-    return Sv,grid_dict
+    return Sv
 end
 
 

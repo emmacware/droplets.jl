@@ -165,11 +165,12 @@ function plot_grid_with_droplets(grid, droplets)
     else
         scatter([droppie.loc[1] for droppie in bigdrops], [droppie.loc[2] for droppie in bigdrops], 
             markersize= [(5e4*droppie.R) for droppie in bigdrops],#0.4, #alpha= [1*10*droppie.R^2*droppie.ξ for droppie in bigdrops],
-            label="Droplets",background=:dodgerblue, zcolor=[droppie.R for droppie in bigdrops])
+            label=false,background=:dodgerblue,c=cgrad(:thermal, rev = true),zcolor=[droppie.R*1e6 for droppie in bigdrops],
+            colorbar_title="Radius(μm)")
     end
 
     
     xlabel!("X")
     ylabel!("Y")
-    title!("Grid with Droplets")
+    title!("Domain")
 end

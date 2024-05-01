@@ -48,11 +48,12 @@ P = P0.*exp.(-gconst.*grid_box_mids_y./(T.*Rd))
 ρv = zeros(Nx,Ny+1) #just sedimentation
 ρd =  P./(Rd.*T)
 ρ = ρd ./(1 .- qvarray) #kg/m^3, density of moist air
+θb = T.*(P0./P).^(Rd/Cp)
 
 #superdroplets
 # #-------------------------------------------------
-Ns = 2^12
-n0 = 2^15
+Ns = 2^8
+n0 = 2^23
 R0 = 30.531e-6 #meters
 M0 = 1e-16 #kg
 Δt = 1
@@ -68,9 +69,38 @@ grid_dict = Dict{Tuple{Int, Int}, Vector{Superdroplet}}()
 droplet_gridbox(superdroplets,Nx,Ny,Δx,Δy,grid_dict)
 
 # #-------------------------------------------------
+function sedimentation_animation(superdroplets,grid_dict,grid_box,grid_box_mids_y,Δt,ΔV,Nx,Ny,ρu,ρv,ρ,qvarray,P,T,θb,radius_bins_edges,kernel)
 anim = Animation()
-plot_grid_with_droplets(grid_box, superdroplets)
-ylims!(0,500)
+plot3 = heatmap([1],grid_box_mids_y[:],T',c=cgrad(:roma, rev = true),colorbar_title="T(K)")
+Senv = sat.(qvarray,P)./esat.(T)
+plot3 = plot!(Senv',grid_box_mids_y[:],c=:black,linewidth=4,label = "Senv",background=:dodgerblue)
+xlims!(plot3,0.995,1.025)
+xlabel!(plot3,"Saturation")
+title!(plot3,"T,Senv")
+xticks!(plot3,[1.0,1.01,1.02],["1.0","1.01","1.02"])
+plot2 = plot()
+plot2 = plot_grid_with_droplets(grid_box, superdroplets)
+plot2 = ylims!(0,500)
+plot2 = xlabel!("X (m)")
+plot2 = ylabel!("Z (m)")
+plot2 = title!("Δt = 1m,Sedimentation, Coalescence, and Condensation",titlefontsize=12)
+# title1 = plot(title = "Sedimentation, Coalescence, and Condensation", grid = false, showaxis = false)
+
+plot1 = [plot(),plot(),plot(),plot(),plot()]
+for i in 1:Ny
+            droplets = grid_dict[(1,i)]
+            ngrid = length(droplets)
+            x,y = binning_dsd(droplets,radius_bins_edges,Δt;smooth = true,scope_init = 2)
+            # plot1[i]= plot(x,y,log)
+            plot1[Ny+1-i] = plot(x,y,lc=:black,xaxis=:log,xlims=(10,1000),ylims=(0,3),label=false)
+end
+xlabel!(plot1[Ny], "Radius (μm)")
+ylabel!(plot1[3], "g(lnr)")
+title!(plot1[1],"DSD")
+p1 = plot(plot1...,layout=(Ny,1))
+plot(plot3,plot2,p1,layout=@layout([A B{0.5w} C]),size=(1000,600))
+# plot(plot2, plot1..., layout=@layout([a{0.7w} grid(Ny, 1)]))
+# ylims!(0,500)
 frame(anim)
 sleep(1)
 
@@ -80,17 +110,46 @@ for t in 1:15
             droplets = grid_dict[(1,i)]
             ngrid = length(droplets)
             coalescence_timestep!(droplets,ngrid,Δt,ΔV,kernel=kernel)
+        #     x,y = binning_dsd(droplets,radius_bins_edges,Δt;smooth = true,scope_init = 2)
+        #     # plot1[i]= plot(x,y,log)
+        #     plot1[Ny+1-i] = plot(x,y,lc=:black,xaxis=:log,xlims=(10,1000),ylims=(0,3),label=false)
         end
-        condense_and_calc_Sv!(qvarray,T,P,ρ,Δt,ΔV,Nx,Ny,grid_dict)
-        qvcondenseupdate!(Sv, qvarray, P,T, Δt)
+        Sv = condense_and_calc_Sv!(qvarray,T,P,ρ,Δt,ΔV,Nx,Ny,grid_dict)
+        θb,T = θcondenseupdate!(Sv,θb,Δt,P)
+        qvarray,ρ = qvcondenseupdate!(Sv, qvarray, P,T, Δt)
         update_position!(superdroplets,Nx,Ny,Δt,ρu,ρv,ρ, grid_dict,grid_box)
     end
-    plot_grid_with_droplets(grid_box, superdroplets)
-    ylims!(0,500)
+    for i in 1:Ny
+        droplets = grid_dict[(1,i)]
+        ngrid = length(droplets)
+        x,y = binning_dsd(droplets,radius_bins_edges,Δt;smooth = true,scope_init = 2)
+        # plot1[i]= plot(x,y,log)
+        plot1[Ny+1-i] = plot(x,y,lc=:black,xaxis=:log,xlims=(10,1000),ylims=(0,3),label=false)
+    end
+    plot3 = heatmap([1],grid_box_mids_y[:],T',c=cgrad(:roma, rev = true),colorbar_title="T(K)")
+    Senv = sat.(qvarray,P)./esat.(T)
+    plot3 = plot!(Senv',grid_box_mids_y[:],c=:black,linewidth=4,label = "Senv",background=:dodgerblue)
+    title!(plot3,"T,Senv")
+    xlims!(plot3,0.995,1.025)
+    xlabel!(plot3,"Saturation")
+    xticks!(plot3,[1.0,1.01,1.02],["1.0","1.01","1.02"])    
+    plot2 = plot()
+    plot2 = plot_grid_with_droplets(grid_box, superdroplets)
+    plot2 = ylims!(0,500)
+    plot2 = xlabel!("X (m)")
+    plot2 = ylabel!("Z (m)")
+    plot2 = title!("Δt = 1m,Sedimentation, Coalescence, and Condensation",titlefontsize=12)
+    title!(plot1[1],"DSD")
+    xlabel!(plot1[Ny], "Radius (μm)")
+    ylabel!(plot1[3], "g(lnr)")
+    p1 = plot(plot1...,layout=(Ny,1))
+    plot(plot3,plot2,p1,layout=@layout([A B{0.5w} C]),size=(1000,600))
+
     frame(anim)
     sleep(1)
 end
-gif(anim, "sediment.gif", fps = 1)
+return anim
+end
 
-# plot_grid_with_droplets(grid_box, superdroplets)
-# plot(collect(drop.R for drop in superdroplets))
+anim = sedimentation_animation(superdroplets,grid_dict,grid_box,grid_box_mids_y,Δt,ΔV,Nx,Ny,ρu,ρv,ρ,qvarray,P,T,radius_bins_edges,kernel)
+gif(anim, fps = 2)
