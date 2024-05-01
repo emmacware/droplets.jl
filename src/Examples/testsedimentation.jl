@@ -30,24 +30,8 @@ qv = [0.01, 0.01, 0.01, 0.01, 0.01] #kg/kg
 P = [101.3, 101.3, 101.3, 101.3, 101.3] #hPa
 
 #-------------------------------------------------
-
-# Create the grid with lower and upper bounds of dx and dy
-grid_box = Array{Tuple{Float64, Float64,Float64,Float64}}(undef, Nx, Ny)
-grid_box_mids_x = zeros(Nx, Ny)
-grid_box_mids_y = zeros(Nx, Ny)
-for i in 1:Nx
-    for j in 1:Ny
-        dx_lower = (i-1) * Δx
-        dx_upper = i * Δx
-        dy_lower = (j-1) * Δy
-        dy_upper = j * Δy
-        mid_x = (dx_lower + dx_upper)/2
-        mid_y = (dy_lower + dy_upper)/2
-        grid_box[i, j] = (dx_lower, dx_upper, dy_lower, dy_upper)
-        grid_box_mids_x[i, j] = mid_x
-        grid_box_mids_y[i, j] = mid_y
-    end
-end
+# Grid
+grid_box, grid_box_mids_x, grid_box_mids_y = create_gridbox(Nx,Ny,Δx,Δy)
 
 # #-------------------------------------------------
 Sv = zeros(Nx,Ny)
