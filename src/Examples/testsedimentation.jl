@@ -153,3 +153,4 @@ end
 
 anim = sedimentation_animation(superdroplets,grid_dict,grid_box,grid_box_mids_y,Δt,ΔV,Nx,Ny,ρu,ρv,ρ,qvarray,P,T,radius_bins_edges,kernel)
 gif(anim, fps = 2)
+gif(anim, "src/Examples/sedimentation.gif", fps = 2)
