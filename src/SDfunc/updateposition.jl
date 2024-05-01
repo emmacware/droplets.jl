@@ -7,6 +7,11 @@
 
 
 # Functions:
+# limit(a, N_x)
+# limity(a, N_y)
+# limitvface(a, N_y)
+    # these functions are used to limit the droplet location to the domain,
+    # periodic horizontal boundaries and non-periodic vertical boundaries
 # add_to_grid!(droplet, grid_index, grid_dict)
     # Adds a droplet to a grid_dict list
 # move_to_grid!(droplet, old_grid_index, new_grid_index, grid_dict)
@@ -18,7 +23,9 @@
 
 ############################################################################################
 
-
+limit(a, N_x) = a > N_x ? a - N_x : a < 1 ? a + N_x : a
+limity(a, N_y) = a > N_y ? N_y : a < 1 ? 1 : a
+limitvface(a, N_y) = a > N_y +1 ? N_y +1 : a < 1 ? 1 : a
 
 function add_to_grid!(droplet, grid_index, grid_dict)
     if haskey(grid_dict, grid_index)
@@ -66,21 +73,21 @@ function update_position!(droplets,Nx,Ny,dt,ρu,ρv,ρ, grid_dict,gridbox)
                             elseif droplet.loc[1] > Nx*Δx
                                 droplet.loc[1] = droplet.loc[1]-Nx*Δx
                             end
-                            move_to_grid!(droplet, (i,j), (i,ceil(droplet.loc[1]/Δx)), grid_dict)
+                            move_to_grid!(droplet, (i,j), (ceil(droplet.loc[1]/Δx),j), grid_dict)
                         end
 
-                        if droplet.loc[2] < gridbox[i,j][3]
+                        if droplet.loc[2] <= gridbox[i,j][3]
                             if droplet.loc[2] <= 0
-                                droplet.loc[2] = gridbox[i,j][3]
+                                droplet.loc[2] = 0 #gridbox[i,j][3]
                                 move_to_grid!(droplet, (i,j), (0,0), grid_dict)
                             else
-                                move_to_grid!(droplet, (i,j), ((ceil(droplet.loc[2]/Δy)),j), grid_dict)
+                                move_to_grid!(droplet, (i,j), (i,(ceil(droplet.loc[2]/Δy))), grid_dict)
                             end
                         elseif droplet.loc[2]  >= gridbox[i,j][4] 
-                            if i == 1
-                                droplet.loc[2] = gridbox[i,1][4]
+                            if i == Ny
+                                droplet.loc[2] = gridbox[i,Ny][4]
                             else
-                            move_to_grid!(droplet, (i,j), ((ceil(droplet.loc[2]/Δy)),j), grid_dict)
+                            move_to_grid!(droplet, (i,j), (i,(ceil(droplet.loc[2]/Δy))), grid_dict)
                             end
                         end
                     end

@@ -47,7 +47,7 @@ end
 esat(T) = 100*6.1094.*exp.(17.625.*(T.-273)./((T.-273) .+243.04)) ## August–Roche–Magnus approximation, hPa to Pa, T in K, converted to C
 
 #environmntal saturation based on the mixing ratio of water vapor to air
-sat(qvarray,P) = qvarray.*P./(0.378.*qvarray .+ 0.622) ##qvarray is the mixing ratio of water vapor to air, Pa
+sat(qvarray,P) = qvarray.*P./(0.378.*qvarray .+ 0.622) ##qvarray is the specific humidity: mixing ratio of water vapor to moist air, Pa
 
 
 ######################################################################
@@ -177,9 +177,14 @@ function condense_and_calc_Sv!(qvarray,T,P,ρ,Δtg,ΔgridV,Nx,Ny,grid_dict)
                     pcondense = (a,b,S,droplet.M,denom)
                     tspan = (0.0,Δtg)
                     Rc = droplet.R+0.0
-                    rODE = ODEProblem{false}(drdtcondensation,Rc,tspan,pcondense)
-                    # rnew = solve(rODE,AutoTsit5(Rosenbrock23()), dt=Δtg).u[end]
+                    # rODE = ODEProblem{false}(drdtcondensation1,Rc,tspan,pcondense)
+                    rODE = ODEProblem(drdtcondensation1,Rc,tspan,pcondense)
+
+                    # droplet.R = solve(rODE,AutoTsit5(Rosenbrock23()), dt=Δtg).u[end]
                     droplet.R = solve(rODE,ImplicitEuler()).u[end]
+                    if droplet.R <=0 #failsafe, should change to dry radius
+                        droplet.R = 1e-7
+                    end
                     droplet.X = 4/3 * π * droplet.R^3
                 end
                 
@@ -259,6 +264,6 @@ function qvcondenseupdate!(Sv, qvarray, P,T, Δtg)
     qvarray = qvarray .+ Δtg.*Sv
     ρd =  P./(Rd.*T)
     ρ = ρd ./(1 .- qvarray) 
-    return qvarray*ρ,ρ
+    return qvarray,ρ
 end
 

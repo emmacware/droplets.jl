@@ -38,7 +38,7 @@ function create_NaCl_superdroplets(Ns,Nx,Ny,Δx,Δy,Rstart,Xstart,ξstart,Mstart
 end
 
 # Determine which grid box the droplet is in by ordering by location and then finding the grid box
-function droplet_gridbox(droplets,grid_dict)
+function droplet_gridbox(droplets,Nx,Ny,Δx,Δy,grid_dict)
 
     for i in 1:Nx
         for j in 1:Ny

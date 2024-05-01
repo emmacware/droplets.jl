@@ -151,3 +151,25 @@ function gnormal(R,X,ξ,Ns)
     g = 1/ΔV * sum(ξ.*X.*ρl.*1e3.*W.(Y)) # 1e3 converts kg to g
     return g
 end
+
+
+function plot_grid_with_droplets(grid, droplets)
+
+
+    Nx, Ny = size(grid)
+
+    bigdrops = [drop for drop in droplets if drop.R > 1e-7]
+
+    if isempty(bigdrops)
+        plot(background=:dodgerblue)
+    else
+        scatter([droppie.loc[1] for droppie in bigdrops], [droppie.loc[2] for droppie in bigdrops], 
+            markersize= [(5e4*droppie.R) for droppie in bigdrops],#0.4, #alpha= [1*10*droppie.R^2*droppie.ξ for droppie in bigdrops],
+            label="Droplets",background=:dodgerblue, zcolor=[droppie.R for droppie in bigdrops])
+    end
+
+    
+    xlabel!("X")
+    ylabel!("Y")
+    title!("Grid with Droplets")
+end
