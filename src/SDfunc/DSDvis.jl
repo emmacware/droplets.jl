@@ -10,7 +10,7 @@
 #smoothbins!(bins,scope_init=1),                                        returns smoothed_bin_values
 #error_measure(y,ytrue,x),                                              returns integrated_error
 #gnormal(R,X,ξ,Ns),                                                     returns g(lnR) guassian KDE **i dont recommend
-
+#plot_grid_with_droplets(grid, droplets),                               returns plot of grid with droplets
 
 
 

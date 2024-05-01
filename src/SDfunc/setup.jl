@@ -6,6 +6,7 @@
 
 #functions:
 #create_NaCl_superdroplets(Ns,Ny,Nx,Δx,Δy,ξstart,Mstart),  returns Ns superdroplets based on init vectors
+#create_gridbox(Nx,Ny,Δx,Δy),                              returns grid box and midpoints
 #droplet_gridbox(droplets,grid_dict),                      returns grid_dict with list of droplets in each grid box
 #set_to_gridReq!(superdroplets, grid_dict, gridR)          sets the radius of each droplet to the equilibrium radius of the grid box
 
