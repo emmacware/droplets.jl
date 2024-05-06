@@ -142,7 +142,7 @@ function error_measure(y,ytrue,x)
 end
 
 # Gaussian kernel density estimator function
-# Useless honestly just bin it, smoothing function is in there if you want it
+# Useless honestly just bin it, smoothing function is there if you want it
 function gnormal(R,X,ξ,Ns)
     σ₀ = 0.62
     σ = σ₀*Ns^(-1/5)

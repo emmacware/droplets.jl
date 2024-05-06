@@ -14,7 +14,7 @@ include("../SDfunc/DSDvis.jl")
 #-------------------------
 # Variable Initialization
 #-------------------------
-n_sd = 2^17 # number of superdroplets
+n_sd = 2^18 # number of superdroplets
 si = pyimport("PySDM.physics").si
 rho_w = pyimport("PySDM.physics.constants_defaults").rho_w # kg/m3
 ρ = rho_w # kg/m3.

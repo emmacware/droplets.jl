@@ -13,11 +13,11 @@
 
 #KERNEL FUNCTIONS
     #terminal_v(r),                     returns tv
-    #collision_efficiency(R1,R2),       returns E
-    #hydrodynamic(droplet1,droplet2),   returns E*π*Rsum^2*vdif
-    #hydrodynamic(R1,R2,X,Xs),          returns E .*π .* Rsum^2 .*vdif
-    #golovin(droplet1,droplet2),        returns b*Xsum
-    #golovin(R1,R2,X,Xs),               returns b*Xsum
+    #collision_efficiency(R1,R2),       returns efficiency
+    #hydrodynamic(droplet1,droplet2),   returns hydrodynamic kernel calc
+    #hydrodynamic(R1,R2,X,Xs),          returns hydrodynamic kernel calc
+    #golovin(droplet1,droplet2),        returns golovin kernel calc
+    #golovin(R1,R2,X,Xs),               returns golovin kernel calc
 
 #SDM FUNCTIONS
     #calc_Ps(droplet1,droplet2,Δt,ΔV;kernel=golovin),                       returns Ps
