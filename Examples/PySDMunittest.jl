@@ -5,16 +5,16 @@ using Distributions
 using Plots
 using PyCall
 using Interpolations # for hydrodynamic kernel/terminal velocity
-include("../SDfunc/coalescence.jl")
-include("../SDfunc/DSDvis.jl")
-
+using Droplets
+include("DSDvis.jl")
+include("testfunctions.jl")
 
 # A comparison with PySDM and JSDM for box collision-coalescence
 
 #-------------------------
 # Variable Initialization
 #-------------------------
-n_sd = 2^18 # number of superdroplets
+n_sd = 2^15 # number of superdroplets
 si = pyimport("PySDM.physics").si
 rho_w = pyimport("PySDM.physics.constants_defaults").rho_w # kg/m3
 ρ = rho_w # kg/m3.

@@ -1,40 +1,6 @@
-##################################################
-# Coalescence example
-##################################################
-using Random
-using Combinatorics
-using Distributions
 using Plots
-using Interpolations
-include("../SDfunc/coalescence.jl")
-include("../SDfunc/DSDvis.jl")
-include("../SDfunc/setup.jl")
 
-# This file has examples of box collision coalescence using 
-# the vectorized structure and the droplet structure
-# using coalescence_timestep! from coalescence.jl
-
-
-# ##################################################
-# # Coalescence example, with vectorized structure
-# ##################################################
-# #Settings 
-# #-------------------------------------------------
-Ns = 2^10
-n0 = 2^23
-R0 = 30.531e-6 #meters
-Δt = 1
-ΔV = 10^6
-kernel = golovin
-radius_bins_edges = 10 .^ range(log10(10*1e-6), log10(5e3*1e-6), length=128) 
-smooth = true
-
-ξstart,Rstart,Xstart = init_ξ_const(Ns,ΔV,n0,R0)
-
-
-
-
-function run_coalescence_box!(ξ,R,X,Ns,Δt,ΔV;smooth=true,kernel=golovin,radius_bins_edges=radius_bins_edges)
+function coalescence_unittest_graph!(ξ,R,X,Ns,Δt,ΔV;smooth=true,label=true,kernel=golovin,radius_bins_edges=10 .^ range(log10(10*1e-6), log10(5e3*1e-6), length=128))
     println("Running simulation...")
     seconds = 0
 
@@ -55,8 +21,8 @@ function run_coalescence_box!(ξ,R,X,Ns,Δt,ΔV;smooth=true,kernel=golovin,radiu
                 # linetype=:steppost,
                 # linewidth=2,
                 xaxis=:log,xlims=(10,10000), 
-                label="t = "*string(seconds)*" sec",legend=:topright,
-                legendtitle = string(kernel)*" kernel, "*s"$N_s$=2^"*string(Int(log2(Ns))),guidefontsize=10)
+                label = label == true ? "t = "*string(seconds)*" sec" : nothing,legend=:topright,
+                legendtitle = string(kernel)*", "*s"$N_s$=2^"*string(Int(log2(Ns))),guidefontsize=10)
             title!("Time Evolution of the Mass Density Distribution")
             xlabel!("Droplet Radius R (μm)")
             ylabel!("Mass Density Distribution g(lnR)(g/m^3/unit ln R)")
@@ -78,40 +44,10 @@ function run_coalescence_box!(ξ,R,X,Ns,Δt,ΔV;smooth=true,kernel=golovin,radiu
     return plot1
 end
 
-plot1 = run_coalescence_box!(ξstart,Rstart,Xstart,Ns,Δt,ΔV,smooth=smooth,kernel=golovin,radius_bins_edges=radius_bins_edges)
-display(plot1)
 
 
 
-
-
-
-
-
-
-
-# ##################################################
-# # Coalescence example, with droplet structure
-# ##################################################
-
-# #Settings
-# #-------------------------------------------------
-# Ns = 2^15
-# n0 = 2^23
-# R0 = 30.531e-6 #meters
-# M0 = 1e-16 #kg
-# Δt = 1
-# ΔV = 10^6
-# Nx = Ny = 100
-# Δx = Δy = 10
-# kernel = golovin
-# radius_bins_edges = 10 .^ range(log10(10*1e-6), log10(5e3*1e-6), length=128) 
-# smooth = true
-
-# ξstart,Rstart,Xstart,Mstart = init_ξ_const(Ns,ΔV,n0,R0,M0)
-# superdrops = create_NaCl_superdroplets(Ns,Nx,Ny,Δx,Δy,Rstart,Xstart,ξstart,Mstart)
-
-function run_coalescence_box!(droplets,Ns,Δt,ΔV;smooth=true,
+function coalescence_unittest_graph!(droplets,Ns,Δt,ΔV;smooth=true,label=true,
     kernel=golovin,radius_bins_edges=10 .^ range(log10(10*1e-6), log10(5e3*1e-6), length=128))
     
     println("Running simulation...")
@@ -137,8 +73,8 @@ function run_coalescence_box!(droplets,Ns,Δt,ΔV;smooth=true,
                     # linetype=:steppost,
                     # linewidth=2,
                     xaxis=:log,xlims=(10,10000), 
-                    label="t = "*string(seconds)*" sec",legend=:topright,
-                    legendtitle = string(kernel)*" kernel, "*s"$N_s$=2^"*string(Int(log2(Ns))),guidefontsize=10)
+                    label = label == true ? "t = "*string(seconds)*" sec" : nothing,legend=:topright,
+                    legendtitle = string(kernel)*", "*s"$N_s$=2^"*string(Int(log2(Ns))),guidefontsize=10)
 
                 title!("Time Evolution of the Mass Density Distribution")
                 xlabel!("Droplet Radius R (μm)")
@@ -164,7 +100,3 @@ function run_coalescence_box!(droplets,Ns,Δt,ΔV;smooth=true,
 
     return plot1
 end
-
-
-# plot1 = run_coalescence_box!(superdrops,Ns,Δt,ΔV,smooth=smooth,kernel=golovin,radius_bins_edges=radius_bins_edges)
-##note: superdroplet structs change in place, so will need to reinitialize to get the same results

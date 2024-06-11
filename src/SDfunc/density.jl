@@ -1,6 +1,7 @@
 ########################################################################################
 # This file contains the functions to calculate the density of liquid water
 ########################################################################################
+export calc_ρw
 
 #Only 1 function in here, calc_ρw
 #options for arguments:

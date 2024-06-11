@@ -2,6 +2,8 @@
 #This file contains grid_dicts/mutable structs organization
 #--------------------------------------------------------------------------------
 
+export Superdroplet, create_NaCl_superdroplets, create_gridbox, droplet_gridbox, set_to_gridReq!
+
 #Superdroplet type: mutable struct with radius, location, multiplicity, volume, solute mass, and molar mass of solute
 
 #functions:

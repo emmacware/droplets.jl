@@ -1,8 +1,7 @@
 ##################################################
 # Condensation  example
 ##################################################
-include("../SDfunc/constants.jl")
-include("../SDfunc/condensation.jl")
+using Droplets
 using DifferentialEquations
 using Plots
 

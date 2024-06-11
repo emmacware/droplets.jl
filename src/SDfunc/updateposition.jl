@@ -2,6 +2,8 @@
 # This file contains functions to update the position of the droplets in the domain 
 ############################################################################################
 
+export update_position!
+
 # based on superdroplet struct type and grid_dict organization
 
 

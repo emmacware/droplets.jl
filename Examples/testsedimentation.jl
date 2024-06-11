@@ -4,12 +4,9 @@ using Distributions
 using Plots
 using Interpolations
 using DifferentialEquations
-include("../SDfunc/coalescence.jl")
-include("../SDfunc/DSDvis.jl")
-include("../SDfunc/setup.jl")
-include("../SDfunc/constants.jl")
-include("../SDfunc/condensation.jl")
-include("../SDfunc/updateposition.jl")
+include("DSDvis.jl")
+using Droplets
+
 
 
 # ##################################################
@@ -42,13 +39,15 @@ for j in 1:Ny
     T[:,j] .= 305-9.5*height
 end
 
+sed_const = Constants()
+
 qvarray = [0.0295 0.028 0.027 0.026 0.025] #kg/kg, specific humidity or mixing ratio of vapor/moist air
-P = P0.*exp.(-gconst.*grid_box_mids_y./(T.*Rd))
+P = P0.*exp.(-Droplets.gconst.*grid_box_mids_y./(T.*Droplets.Rd))
 ρu = zeros(Nx,Ny) #just sedimentation
 ρv = zeros(Nx,Ny+1) #just sedimentation
-ρd =  P./(Rd.*T)
+ρd =  P./(Droplets.Rd.*T)
 ρ = ρd ./(1 .- qvarray) #kg/m^3, density of moist air
-θb = T.*(P0./P).^(Rd/Cp)
+θb = T.*(P0./P).^(Droplets.Rd/Droplets.Cp)
 
 #superdroplets
 # #-------------------------------------------------
@@ -151,5 +150,5 @@ end
 return anim
 end
 
-anim = sedimentation_animation(superdroplets,grid_dict,grid_box,grid_box_mids_y,Δt,ΔV,Nx,Ny,ρu,ρv,ρ,qvarray,P,T,radius_bins_edges,kernel)
+anim = sedimentation_animation(superdroplets,grid_dict,grid_box,grid_box_mids_y,Δt,ΔV,Nx,Ny,ρu,ρv,ρ,qvarray,P,T,θb,radius_bins_edges,kernel)
 gif(anim, fps = 2)

@@ -1,6 +1,9 @@
 #---------------------------------------------------------------------------
 #Condensation functions in this file (more description throughout the file)
 #---------------------------------------------------------------------------
+using DifferentialEquations
+export esat,sat,drdtcondensation1,drdtcondensation2,drdtcondensation3,condense_and_calc_Sv!
+export FK,FD,drkohler,eq_radius,θcondenseupdate!,qvcondenseupdate!
 
 # FK(T),            returns FK in the Köhler equation
 # FD(T),            returns FD in the Köhler equation
@@ -156,7 +159,7 @@ end
 #without splitting it up by grid yet.. is that possible?
 
 function condense_and_calc_Sv!(qvarray,T,P,ρ,Δtg,ΔgridV,Nx,Ny,grid_dict)
-
+    Sv = zeros(Nx,Ny)
     for i in 1:Nx
         for j in 1:Ny
             grid = (i,j)
@@ -253,16 +256,16 @@ end
 # temperature and mixing ratio after condensation, using Sv
 # both can take the arguments as vectors or scalars (Δtg needs to be scalar)
 
-function θcondenseupdate!(Sv,θ,Δtg,P)
-    Exner = (P./P0).^(Rd/Cp)
-    θ = θ .+ -Δtg*L.*Sv./(Cp.*Exner)
-    T = θ.*(P./P0).^(Rd/Cp)
+function θcondenseupdate!(Sv,θ,Δtg,P,P0,constants)
+    Exner = (P./P0).^(Constants.Rd/constants.Cp)
+    θ = θ .+ -Δtg*constants.L.*Sv./(constants.Cp.*Exner)
+    T = θ.*(P./P0).^(constants.Rd/constants.Cp)
     return θ,T
 end
 
-function qvcondenseupdate!(Sv, qvarray, P,T, Δtg)
+function qvcondenseupdate!(Sv, qvarray, P,T,constants,Δtg)
     qvarray = qvarray .+ Δtg.*Sv
-    ρd =  P./(Rd.*T)
+    ρd =  P./(constants.Rd.*T)
     ρ = ρd ./(1 .- qvarray) 
     return qvarray,ρ
 end
