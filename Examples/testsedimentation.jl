@@ -39,15 +39,15 @@ for j in 1:Ny
     T[:,j] .= 305-9.5*height
 end
 
-sed_const = Constants()
+# sed_const = Constants()
 
 qvarray = [0.0295 0.028 0.027 0.026 0.025] #kg/kg, specific humidity or mixing ratio of vapor/moist air
-P = P0.*exp.(-sed_const.gconst.*grid_box_mids_y./(T.*sed_const.Rd))
+P = P0.*exp.(-constants.gconst.*grid_box_mids_y./(T.*constants.Rd))
 ρu = zeros(Nx,Ny) #just sedimentation
 ρv = zeros(Nx,Ny+1) #just sedimentation
-ρd =  P./(sed_const.Rd.*T)
+ρd =  P./(constants.Rd.*T)
 ρ = ρd ./(1 .- qvarray) #kg/m^3, density of moist air
-θb = T.*(P0./P).^(sed_const.Rd/sed_const.Cp)
+θb = T.*(P0./P).^(constants.Rd/constants.Cp)
 
 #superdroplets
 # #-------------------------------------------------
