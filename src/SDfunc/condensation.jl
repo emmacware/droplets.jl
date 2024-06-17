@@ -34,12 +34,12 @@ using Roots
 # Functions in the Denominator of the Köhler Equation
 
 function FK(T) ##Temperature is the only one updating with time I think
-    Fk = (L ./(Rv.*T) .-1).*(L*ρl)./(K.*T) 
+    Fk = (constants.L ./(constants.Rv.*T) .-1).*(constants.L*constants.ρl)./(constants.k .*T) 
     return Fk
 end
 
 function FD(T) ##Temperature is the only one updating with time I think
-    Fd = ρl*Rv.*(T .+243.04)./(D.*esat(T))
+    Fd = constants.ρl*constants.Rv .*(T .+243.04)./(constants.Dv .* esat(T))
     return Fd
 end
 
@@ -172,7 +172,7 @@ function condense_and_calc_Sv!(qvarray,T,P,ρ,Δtg,ΔgridV,Nx,Ny,grid_dict)
                 continue
             else
 
-                dropletspre = ([droplet.X*droplet.ξ*ρl for droplet in grid_dict[i,j]]).+0.0
+                dropletspre = ([droplet.X*droplet.ξ*constants.ρl for droplet in grid_dict[i,j]]).+0.0
 
                 # condensationpergridcellradius!(grid_dict[i,j],qvarray[i,j],T[i,j],P[i,j],Δtg)
                 for droplet in grid_dict[i,j]
@@ -192,7 +192,7 @@ function condense_and_calc_Sv!(qvarray,T,P,ρ,Δtg,ΔgridV,Nx,Ny,grid_dict)
                 end
                 
 
-                dropletspost = ([droplet.X*droplet.ξ*ρl for droplet in grid_dict[i,j]]).+0.0
+                dropletspost = ([droplet.X*droplet.ξ*constants.ρl for droplet in grid_dict[i,j]]).+0.0
                 top = sum(dropletspost.-dropletspre)/Δtg
                 # print(top)
             end
@@ -210,7 +210,7 @@ function condense_and_calc_Sv!(R,ξ,X,M,m,qvarray,T,P,ρ,Δtg,ΔV)
         b=4.3 *2 ./m./1e6 #m^3 for NaCL
         S = sat(qvarray,P)/esat(T)
         denom = (FK(T)+FD(T))
-        dropletspre = (X.*ξ.*ρl).+0.0
+        dropletspre = (X.*ξ.*constants.ρl).+0.0
         pcondense = (a,b,S,M,denom)
         tspan = (0.0,Δtg)
         Rc = R.+0.0
@@ -223,7 +223,7 @@ function condense_and_calc_Sv!(R,ξ,X,M,m,qvarray,T,P,ρ,Δtg,ΔV)
         # R = solve(rODE,ImplicitEuler()).u[end]
         #update X
         X = 4/3 * π .* R.^3
-        dropletspost = (X.*ξ.*ρl).+0.0
+        dropletspost = (X.*ξ.*constants.ρl).+0.0
 
         Sv = sum(dropletspost.-dropletspre)/(Δtg* ρ * ΔV)
     return R,X,Sv
@@ -235,7 +235,7 @@ function condense_and_calc_Sv!(R,ξ,X,M,m,Senv,T,ρ,Δtg,ΔV)
     b=4.3 *2 ./m./1e6 #m^3 for NaCL
     S = Senv/esat(T)
     denom = (FK(T)+FD(T))
-    dropletspre = (X.*ξ.*ρl).+0.0
+    dropletspre = (X.*ξ.*constants.ρl).+0.0
     pcondense = (a,b,S,M,denom)
     tspan = (0.0,Δtg)
     Rc = R.+0.0 #necessary?
@@ -246,7 +246,7 @@ function condense_and_calc_Sv!(R,ξ,X,M,m,Senv,T,ρ,Δtg,ΔV)
     # R = solve(rODE,ImplicitEuler()).u[end]
     X = 4/3 * π .* R.^3
 
-    dropletspost = (X.*ξ.*ρl).+0.0
+    dropletspost = (X.*ξ.*constants.ρl).+0.0
     Sv = sum(dropletspost.-dropletspre)/(Δtg* ρ * ΔV)
     return R,X,Sv
 end
@@ -256,14 +256,14 @@ end
 # temperature and mixing ratio after condensation, using Sv
 # both can take the arguments as vectors or scalars (Δtg needs to be scalar)
 
-function θcondenseupdate!(Sv,θ,Δtg,P,P0,constants)
-    Exner = (P./P0).^(Constants.Rd/constants.Cp)
+function θcondenseupdate!(Sv,θ,Δtg,P,P0)
+    Exner = (P./P0).^(constants.Rd/constants.Cp)
     θ = θ .+ -Δtg*constants.L.*Sv./(constants.Cp.*Exner)
     T = θ.*(P./P0).^(constants.Rd/constants.Cp)
     return θ,T
 end
 
-function qvcondenseupdate!(Sv, qvarray, P,T,constants,Δtg)
+function qvcondenseupdate!(Sv, qvarray, P,T,Δtg)
     qvarray = qvarray .+ Δtg.*Sv
     ρd =  P./(constants.Rd.*T)
     ρ = ρd ./(1 .- qvarray) 

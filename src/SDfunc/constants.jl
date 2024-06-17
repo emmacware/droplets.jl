@@ -23,21 +23,33 @@ export Constants
 # Dv = 1.5625
 
 struct Constants{FT<:AbstractFloat}
-    λ::FT
-    κ::FT
-    k::FT
-    μ::FT
-    Dv::FT
-    ρl::FT
-    Rd::FT
-    Rv::FT
-    gconst::FT
-    L::FT
-    Cp::FT
+    λ::FT         # brief
+    κ::FT         # description
+    k::FT         # of 
+    μ::FT         # each
+    Dv::FT        # field   Molecular diffusion constant of ???water vapor in air m2/s???
+    ρl::FT        # and
+    Rd::FT        # its
+    Rv::FT        # units
+    gconst::FT    # gravitational constant, m/s2
+    L::FT         # Latent Heat of Vaporization J/kg
+    Cp::FT        # Specific Heat of Dry air at constant pressure J/kgK
 end
 
-function Constants()
-
-return Constants{Float64}(1.5625,1.5625,1.5625,1.5625,1.5625,1000.0,287.0,461.0,9.8,22.6e5,4.2e3)
+function Constants(;λ=1.5625, 
+                    κ=1.5625, 
+                    k=1.5625, 
+                    μ=1.5625, 
+                    Dv=1.5625, 
+                    ρl=1000.0, 
+                    Rd=287.0, 
+                    Rv=461.0, 
+                    gconst=9.8, 
+                    L=22.6e5, 
+                    Cp=4.2e3)
+    return Constants{Float64}(λ, κ, k, μ, Dv, ρl, Rd, Rv, gconst, L, Cp)
 end
+
+constants = Constants()
+export constants
 
