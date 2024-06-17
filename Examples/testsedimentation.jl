@@ -42,12 +42,12 @@ end
 sed_const = Constants()
 
 qvarray = [0.0295 0.028 0.027 0.026 0.025] #kg/kg, specific humidity or mixing ratio of vapor/moist air
-P = P0.*exp.(-Droplets.gconst.*grid_box_mids_y./(T.*Droplets.Rd))
+P = P0.*exp.(-sed_const.gconst.*grid_box_mids_y./(T.*sed_const.Rd))
 ρu = zeros(Nx,Ny) #just sedimentation
 ρv = zeros(Nx,Ny+1) #just sedimentation
-ρd =  P./(Droplets.Rd.*T)
+ρd =  P./(sed_const.Rd.*T)
 ρ = ρd ./(1 .- qvarray) #kg/m^3, density of moist air
-θb = T.*(P0./P).^(Droplets.Rd/Droplets.Cp)
+θb = T.*(P0./P).^(sed_const.Rd/sed_const.Cp)
 
 #superdroplets
 # #-------------------------------------------------
