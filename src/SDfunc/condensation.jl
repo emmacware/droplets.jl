@@ -256,14 +256,14 @@ end
 # temperature and mixing ratio after condensation, using Sv
 # both can take the arguments as vectors or scalars (Δtg needs to be scalar)
 
-function θcondenseupdate!(Sv,θ,Δtg,P,P0,constants)
-    Exner = (P./P0).^(Constants.Rd/constants.Cp)
+function θcondenseupdate!(Sv,θ,Δtg,P,P0)
+    Exner = (P./P0).^(constants.Rd/constants.Cp)
     θ = θ .+ -Δtg*constants.L.*Sv./(constants.Cp.*Exner)
     T = θ.*(P./P0).^(constants.Rd/constants.Cp)
     return θ,T
 end
 
-function qvcondenseupdate!(Sv, qvarray, P,T,constants,Δtg)
+function qvcondenseupdate!(Sv, qvarray, P,T,Δtg)
     qvarray = qvarray .+ Δtg.*Sv
     ρd =  P./(constants.Rd.*T)
     ρ = ρd ./(1 .- qvarray) 

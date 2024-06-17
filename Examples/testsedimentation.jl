@@ -114,7 +114,7 @@ for t in 1:15
         #     plot1[Ny+1-i] = plot(x,y,lc=:black,xaxis=:log,xlims=(10,1000),ylims=(0,3),label=false)
         end
         Sv = condense_and_calc_Sv!(qvarray,T,P,ρ,Δt,ΔV,Nx,Ny,grid_dict)
-        θb,T = θcondenseupdate!(Sv,θb,Δt,P)
+        θb,T = θcondenseupdate!(Sv,θb,Δt,P,P0)
         qvarray,ρ = qvcondenseupdate!(Sv, qvarray, P,T, Δt)
         update_position!(superdroplets,Nx,Ny,Δt,ρu,ρv,ρ, grid_dict,grid_box)
     end
