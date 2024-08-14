@@ -39,7 +39,8 @@ function FK(T) ##Temperature is the only one updating with time I think
 end
 
 function FD(T) ##Temperature is the only one updating with time I think
-    Fd = constants.ρl*constants.Rv .*(T .+243.04)./(constants.Dv .* esat(T))
+    # Fd = constants.ρl*constants.Rv .*(T .+243.04)./(constants.Dv .* esat(T))
+    Fd = constants.ρl*constants.Rv .*(T)./(constants.Dv .* esat(T))
     return Fd
 end
 
@@ -78,12 +79,12 @@ end
 
 function drdtcondensation3(u,p,t)
     M,m,T,Senv = p
-    du = drkohler(R,M,m,T,Senv)
+    du = drkohler(u,M,m,T,Senv)
     return du
 end
 
 ######################################################################
-#This function calculate the LHS of the Köhler equation
+#This function calculate the RHS of the Köhler equation
 # drdt = ___
 # Can take either the (mixing ratio and pressure) or (environmental saturation) as an argument
 
@@ -92,15 +93,15 @@ function drkohler(R,M,m,T,qv,P)
     b=4.3 *2 ./m ./1e6 #m^3 for NaCL
     S = sat.(qv,P) ./esat(T)
     denom = (FK(T)+FD(T))
-    return (S-1-(a./R) .+b .*M ./(R.^3)) ./(denom.*R)
+    return (S-1 .-(a./R) .+b .*M ./(R.^3)) ./(denom.*R)
 end
 
 function drkohler(R,M,m,T,Senv)
     a=3.3*10^(-7)/T #(m K/T)
     b=4.3 *2 ./m ./1e6 #m^3 for NaCL
-    S = Senv/esat(T)
+    # S = Senv/esat(T)
     denom = (FK(T)+FD(T))
-    return (S-1-(a./R) .+b .*M ./(R.^3)) ./(denom.*R)
+    return (Senv-1 .-(a./R) .+b .*M ./(R.^3)) ./(denom.*R)
 end
 
 ######################################################################
