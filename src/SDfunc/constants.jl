@@ -31,9 +31,15 @@ struct Constants{FT<:AbstractFloat}
     ρl::FT        # and
     Rd::FT        # its
     Rv::FT        # units
+    R::FT         # Gas constant J/kgK
     gconst::FT    # gravitational constant, m/s2
     L::FT         # Latent Heat of Vaporization J/kg
-    Cp::FT        # Specific Heat of Dry air at constant pressure J/kgK
+    Cp_lw::FT        # Specific Heat of liquid water at constant pressure J/kgK
+    Cp_dry::FT        # Specific Heat of dry air at constant pressure J/kgK
+    Mw::FT        # Molecular weight of water g/mol
+    T0::FT        # Reference temperature K
+    P0::FT        # Reference pressure Pa
+    ρi::FT        # Density of ice kg/m3
 end
 
 function Constants(;λ=1.5625, 
@@ -44,9 +50,11 @@ function Constants(;λ=1.5625,
                     ρl=1000.0, 
                     Rd=287.0, 
                     Rv=461.0, 
-                    gconst=9.8, 
+                    gconst=9.81, 
                     L=22.6e5, 
-                    Cp=4.2e3)
+                    Cp_lw=4.2e3),
+                    Cp_dry = 1.00464e3,
+                    ρ_ice = 916.8
     return Constants{Float64}(λ, κ, k, μ, Dv, ρl, Rd, Rv, gconst, L, Cp)
 end
 
