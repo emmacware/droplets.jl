@@ -1,11 +1,12 @@
 #Crystals!
 export create_crystals, create_statevar, ice_deposition
 
-mutable struct Crystals{FT <: Real, T <: Union{Tuple{FT,FT}, Tuple{FT,FT,FT}}}
+mutable struct Crystals{FT <: Real}#, T <:Tuple{FT,FT}}
     a::FT # equatorial radius (m)
     c::FT # polar radius (m)
     # r::FT # wet radius (m)
-    loc::T # location (m)
+    xloc::FT # location (m)
+    yloc::FT
     vel::FT # term velocity (m/s)
     ξ::FT # multiplicity can be a float why not
     M::FT # mass (g)
@@ -19,13 +20,14 @@ function create_crystals(Ns,Nx,Ny,Δx,Δy,astart,cstart,ξstart,Mstart,ρistart,
     for i in 1:Ns
         a = astart[i]
         c = cstart[i]
-        loc = (rand(0.003:Nx*Δx), rand(0.003:Ny*Δy))
+        xloc = rand(0.003:Nx*Δx)
+        yloc = rand(0.003:Ny*Δy)
         vel = 0.0
         ξ = ξstart[i]
         M = Mstart[i]
         ρi = ρistart[i]
         ρd = ρdstart[i]
-        crystal = Crystals(a,c,loc,vel,ξ,M,ρi,ρd)
+        crystal = Crystals(a,c,xloc,yloc,vel,ξ,M,ρi,ρd)
         push!(crystals, crystal)
     end
     return crystals 
