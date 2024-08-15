@@ -1,13 +1,13 @@
 #Crystals!
 export create_crystals, create_statevar, ice_deposition
 
-mutable struct Crystals{FT <: Real}#, T <:Tuple{FT,FT}}
+mutable struct Supercrystal{FT <: Real}#, T <:Tuple{FT,FT}}
     a::FT # equatorial radius (m)
     c::FT # polar radius (m)
     # r::FT # wet radius (m)
     xloc::FT # location (m)
     yloc::FT
-    vel::FT # term velocity (m/s)
+    vel::FT # terminal velocity (m/s)
     ξ::FT # multiplicity can be a float why not
     M::FT # mass (g)
     ρ::FT # crystal ice density (kg/m^3)
@@ -534,7 +534,7 @@ function calculate_alpha_ac(alen, clen, caplength,
     gtp1 = constants.Rv * statevar.T / (Dv(statevar.P, statevar.T) * ei0)
     gtp2 = (Lsub(statevar.T,constants.T0)^2 / (xk * constants.Rv * statevar.T^2)) - (Lsub(statevar.T,constants.T0) / (xk * statevar.T))
     gtp_stand = 1.0 / (gtp1 + gtp2)
-    mfp = 6.6e-8 * (1013.25 / statevar.P) * (statevar.T / constants.T0) # Mean free path in m
+    # mfp = 6.6e-8 * (1013.25 / statevar.P) * (statevar.T / constants.T0) # Mean free path in m
     vel_molec = sqrt(8.0*constants.R*statevar.T/(π*constants.Mw*1e-3))  # molecular speed(m/s), change constants.Mw to kg/mol
 
     C3 = (vel_molec*caplength*capacitancedep(alen,clen)/capnew(statevar.T,statevar.P,alen,clen))/

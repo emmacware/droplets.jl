@@ -30,15 +30,19 @@ for i in 1:length(crystals)
 end
 
 
-function icedep(du,u,p,t)
-    statevar,constants,dep_params = p
-    # for i in 1:length(u)
-        du.a,du.c,du.ρ = crystal_deposition(statevar,u,constants,dep_params)
-    # end
+function icedep(du::Vector, u::Vector, p, t)
+    statevar, constants, dep_params = p
+    da, dc, dρ = crystal_deposition(statevar, u, constants, dep_params)
+    
+    du[1] = da
+    du[2] = dc
+    du[3] = dρ
 end
 
 tspan = (0.0, 1.0)
-prob = ODEProblem(icedep,[crystals[1]],tspan,(statevar,constants,dep_params))
+initial_crystal = [crystals[1].a, crystals[1].c, crystals[1].ρ]  # Array for a, c, ρ
+# prob = ODEProblem(icedep,[crystals[1].a,crystals[1].c,crystals[1].ρ],tspan,(statevar,constants,dep_params))
+prob = ODEProblem(icedep,initial_crystal,tspan,(statevar,constants,dep_params))
 sol = solve(prob, Euler(), dt=1e-2)
 
 
