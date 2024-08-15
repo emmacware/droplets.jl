@@ -51,6 +51,32 @@ function create_crystals(Ns, Nx, Ny, Nz, Δx, Δy, Δz, astart, cstart, ξstart,
     return crystals 
 end
 
+# make a function that vectorizes a Supercrystal structure
+function vectorize_crystal(crystal)
+    """
+    This function takes a `Supercrystal` structure and returns a vector of its key properties.
+    # Arguments
+    - `crystal::Supercrystal`: The Supercrystal instance to be vectorized.
+    # Returns
+    - `Vector{Float64}`: A vector containing the properties `a`, `c`, `xloc`, `yloc`, `vel`, `ξ`, `M`, `ρ`, and `ρdep` of the `Supercrystal`.
+    """
+    return [crystal.a, crystal.c, crystal.xloc, crystal.yloc, crystal.vel, crystal.ξ, crystal.M, crystal.ρ, crystal.ρdep]
+end
+
+function crystallize_vector(vector)
+    """
+    This function takes a vector of properties and returns a `Supercrystal` structure.
+    # Arguments
+    - `vector::Vector{Float64}`: A vector containing the properties `a`, `c`, `xloc`, `yloc`, `vel`, `ξ`, `M`, `ρ`, and `ρdep` of the `Supercrystal`.
+    # Returns
+    - `Supercrystal`: A `Supercrystal` instance with the properties specified in the input vector.
+    """
+    return Supercrystal(vector[1], vector[2], vector[3], vector[4], vector[5], vector[6], vector[7], vector[8], vector[9])
+end
+
+
+
+
 ################################################################################
 # Imagine a setup like this!!:
 
@@ -608,6 +634,8 @@ function crystal_deposition(statevar,crystal,constants,dep_params)
 # function crystal_tendency(crystal,dep_params,statevar,constants)
 a = crystal.a
 c = crystal.c
+# 
+println("a,c = $(a)  $(c)")
 phi = c/a
 max_diameter = 2.0 * max(a, c)
 radius = ((a^2)*c)^(1/3)
