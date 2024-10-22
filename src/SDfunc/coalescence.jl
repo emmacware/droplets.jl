@@ -7,7 +7,12 @@ using Distributions
 using Combinatorics
 using Random
 export init_ξ_const,terminal_v,collision_efficiency,hydrodynamic,golovin,calc_Ps,coalescence_timestep!,all_or_nothing!,coalescence_unittest_graph!
+export Serial, Parallel
 
+struct Serial end
+struct Parallel end
+struct Adaptive end
+struct none end
 #functions:
 
 #INITIALIZATION
@@ -52,6 +57,7 @@ export init_ξ_const,terminal_v,collision_efficiency,hydrodynamic,golovin,calc_P
 # ΔV is the volume of the domain, Ns is the number of superdroplets
 # the second option adds mass of solute as an attribute, M0 is the initial mass of solute
 # the function draws from an exponential distribution
+# MOVE
 
 function init_ξ_const(Ns,ΔV,n0,R0)
     ξstart = n0*ΔV/Ns*ones(Float64,Ns)
@@ -134,10 +140,10 @@ function hydrodynamic(droplet1,droplet2)
     return E*π*Rsum^2*vdif
 end
 
-function hydrodynamic(R1,R2,X1,X2)
-    E = collision_efficiency(R1,R2)
-    Rsum = (R1+R2) # sum of radius is in meters
-    vdif = abs(terminal_v(R1).-terminal_v(R2))
+function hydrodynamic(R,X,j,k)
+    E = collision_efficiency(R[j],R[k])
+    Rsum = (R[j]+R[k]) # sum of radius is in meters
+    vdif = abs(terminal_v(R[j]).-terminal_v(R[k]))
     return E .*π .* Rsum^2 .*vdif
 end
 
@@ -155,9 +161,9 @@ function golovin(droplet1,droplet2)
     return b*Xsum
 end
 
-function golovin(R1,R2,X1,X2)
+function golovin(R,X,j,k)
     b = 1.5e3 # seconds^-1
-    Xsum = X1+X2 # m3
+    Xsum = X[j]+X[k] # m3
     return b*Xsum
 end
 
@@ -177,12 +183,29 @@ function calc_Ps(droplet1,droplet2,Δt,ΔV;kernel=golovin)
     return Ps
 end
 
-function calc_Ps(R1,R2,X,Xs,Δt,ΔV,ξj,ξk;kernel=golovin)
-    # This function takes the following arguments:
-    Pjk = kernel(R1,R2,X,Xs)*Δt/ΔV
-    Ps = max(ξj,ξk)*Pjk
-    return Ps
+function calc_Ps(R,X,ξ,j,k,Δt,ΔV;kernel=golovin)
+    return max(ξ[j],ξ[k])*kernel(R,X,j,k)*Δt/ΔV
 end
+
+
+
+function pair_Ps_adaptive(pair,ξ,R,X,ratio_scale_V;kernel=golovin)
+    ξj = max(ξ[pair[1]],ξ[pair[2]])
+    ξk = min(ξ[pair[1]],ξ[pair[2]])
+    # if ξk==0
+    #     println("oop")
+    # end
+    pαdt = ξj*kernel(R,X,pair[1],pair[2])*ratio_scale_V
+    Δtmax = (div(ξj,ξk))/pαdt #div gets the floor 
+    return pαdt,Δtmax
+end
+
+#inline
+function pair_Ps(pair,ξ,R,X;kernel=golovin)
+    return max(ξ[pair[1]],ξ[pair[2]])*kernel(R,X,pair[1],pair[2])
+end
+
+
 
 #----------------------------------------------------------
 # COALESCENCE
@@ -194,539 +217,318 @@ end
 #largest superdroplet is split into two equal parts, as proposed by
 #Dziekan and Pawlowska (ACP, 2017) https://doi.org/10.5194/acp-17-13509-2017
 
-#currently all are parallelized on CPUs with Threads.@threads
-
-#there are three methods: one for superdroplet structures,
-#the other two are for vectorized attribute inputs, one has radius,multiplicity, and volume
-#as attributes and the other has (ξ,R,X,M) as attributes
-#coalescence_timestep!(droplets,Ns,Δt,ΔV;kernel=golovin),   returns droplets
-#coalescence_timestep!(ξ,R,X,Ns,Δt,ΔV;kernel=golovin),      returns ξ,R,X
-#coalescence_timestep!(ξ,R,M,X,Ns,Δt,ΔV;kernel=golovin),    returns ξ,R,M,X
-
-#coalescence_timestep_small_alpha! can handle sublinear sampling parameter y 
-#coalescence_timestep_small_alpha!(droplets,Ns,y,Δt,ΔV;kernel=golovin), returns droplets
+#currently all can be parallelized on CPUs with Threads.@threads
 
 
-function coalescence_timestep!(droplets,Ns,Δt,ΔV;kernel=golovin)
+
+
+
+
+
+
+# #####
+function coalescence_timestep!(run::Serial,scheme::none,ξ,R,X,Ns,Δt,ΔV,scale;kernel=golovin)
     I =shuffle(1:Ns)
-    L= [(I[l-1],I[l]) for l=2:2:length(I)]
-    scale = Ns*(Ns-1)/2/(Ns/2)
-
-    Threads.@threads for α=1:Int(floor(Ns/2))
-    # for α in 1:Ns/2
-
-        jj=L[α][1] #struggled with choosing j>k so its hard coded
-        kk=L[α][2]
-
-        if droplets[jj].ξ<droplets[kk].ξ
-            k=jj
-            j=kk
-        else
-            j=jj
-            k=kk
-        end			
-
-        ϕ = rand()
-        pα = scale*calc_Ps(droplets[j],droplets[k],Δt,ΔV,kernel=kernel)
-
-
-        if ϕ < pα - floor(pα)
-            γ = floor(pα)+1
-        else ϕ >= pα - floor(pα)
-            γ = floor(pα)
-        end
-
-        if γ == 0
-            continue
-        end
-
-        γ_tilde = min(γ,floor(droplets[j].ξ/droplets[k].ξ))
-        # if γ_tilde == floor(ξ[j]/ξ[k])
-        #     println("limit exceeded")
-        # end
-
-        if droplets[j].ξ - γ_tilde*droplets[k].ξ > 0
-            droplets[j].ξ = droplets[j].ξ-γ_tilde*droplets[k].ξ
-            droplets[k].R = (γ_tilde*droplets[j].R^3+droplets[k].R^3)^(1/3)
-            droplets[k].X = 4/3*π * droplets[k].R^3
-            droplets[k].M = γ_tilde*droplets[j].M+droplets[k].M
-
-        elseif droplets[j].ξ - γ_tilde*droplets[k].ξ == 0
-            droplets[j].ξ = floor(droplets[k].ξ/2)
-            droplets[k].ξ = droplets[k].ξ - floor(droplets[k].ξ/2)
-            droplets[j].R = droplets[k].R = (γ_tilde*droplets[j].R^3+droplets[k].R^3)^(1/3)
-            droplets[j].X = droplets[k].X = 4/3*π * droplets[j].R^3
-            droplets[j].M = droplets[k].M = γ_tilde*droplets[j].M+droplets[k].M
-        elseif droplets[j].ξ - droplets[k].ξ < 0
-            print("nooooo")
-        end 
-    end
-
-    #this takes a lot of searching.. could we put the failure condition somewhere else/
-    # min_ξ = findmin(droplet -> droplet.ξ, droplets)
-    # max_ξ = findmax(droplet -> droplet.ξ, droplets)
-    # 
-    # if (min_ξ[1] <= 0 && max_ξ[1] > 1)
-    #     while (min_ξ[1] <= 0 && max_ξ[1] > 1)
-    #         # println("Superdroplet ", argmin(ξ), " has multiplicity of ", ξ[argmin(ξ)])
-    #         # Split superdroplet with highest multiplicity, half goes to argmin(ξ) and half stays
-    #         # Idea from Dziekan and Pawlowska (ACP, 2017) https://doi.org/10.5194/acp-17-13509-2017
-    #         min_ξ = findmin(droplet -> droplet.ξ, droplets)
-    #         max_ξ = findmax(droplet -> droplet.ξ, droplets)
-            
-    #         argmin_i = min_ξ[2]
-    #         argmax_i = max_ξ[2]
-    #         droplets[argmin_i].ξ = floor(max_ξ[1]/2)
-    #         droplets[argmin_i].R = droplets[argmax_i].R
-    #         droplets[argmin_i].X = droplets[argmax_i].X
-    #         droplets[argmin_i].M = droplets[argmax_i].M
-    #         droplets[argmax_i].ξ = floor(max_ξ[1]/2)
-    #     end
-    # elseif (min_ξ[1] <= 0 && max_ξ[1] <= 1)
-    #     # Cannot split highest multiplicity superdroplet, have to remove superdroplet from system
-    #     println("Superdroplet ", min_ξ[2], " has multiplicity of ", min_ξ[1], ", removing from system")
-    #     deleteat!(droplets,droplets[min_ξ[2]])
-    #     Ns=Ns-1 #do I need to return this??
-    # end
-return droplets
-end
-
-
-
-function coalescence_timestep!(ξ,R,M,X,Ns,Δt,ΔV;kernel=golovin)
-    I =shuffle(1:Ns)
-    L= [(I[l-1],I[l]) for l=2:2:length(I)]
-    scale = Ns*(Ns-1)/2/(Ns/2)
-
-    Threads.@threads for α=1:Int(floor(Ns/2))
-    # for α in 1:Int(floor(Ns/2))
-
-        jj=L[α][1] #struggled with choosing j>k so its hard coded
-        kk=L[α][2]
-
-        if ξ[jj]<ξ[kk]
-            k=jj
-            j=kk
-        else
-            j=jj
-            k=kk
-        end			
-
-        ϕ = rand()
-        pα = scale*calc_Ps(R[j],R[k],X[j],X[k],Δt,ΔV,ξ[j],ξ[k],kernel=kernel)
-
-        if ϕ < pα - floor(pα)
-            γ = floor(pα)+1
-        else ϕ >= pα - floor(pα)
-            γ = floor(pα)
-        end
-
-        if γ == 0
-            continue
-        end
-
-        γ_tilde = min(γ,floor(ξ[j]/ξ[k]))
-        # if γ_tilde == floor(ξ[j]/ξ[k])
-        #     println("limit exceeded")
-        # end
-
-        if ξ[j] - γ_tilde*ξ[k] > 0
-            ξ[j] = ξ[j]-γ_tilde*ξ[k]
-            R[k] = (γ_tilde*R[j]^3+R[k]^3)^(1/3)
-            M[k] = γ_tilde*M[j]+M[k]
-
-        elseif ξ[j] - γ_tilde*ξ[k] == 0
-            ξ[j] = floor(ξ[k]/2)
-            ξ[k] = ξ[k] - floor(ξ[k]/2)
-            R[j] = R[k] = (γ_tilde*R[j]^3+R[k]^3)^(1/3)
-            M[j] = M[k] = γ_tilde*M[j]+M[k]
-        elseif ξ[j] - ξ[k] < 0
-            print("nooooo")
-        end
-
-    end
-    X = 4/3 * π .* R.^3
-
-    # #this takes a lot of searching.. could we put the failure condition somewhere else?
-    # if (minimum(ξ) <= 0 && maximum(ξ) > 1)
-
-    #     while (minimum(ξ) <= 0 && maximum(ξ) > 1)
-    #         # println("Superdroplet ", argmin(ξ), " has multiplicity of ", ξ[argmin(ξ)])
-    #         # Split superdroplet with highest multiplicity, half goes to argmin(ξ) and half stays
-    #         # Idea from Dziekan and Pawlowska (ACP, 2017) https://doi.org/10.5194/acp-17-13509-2017
-    #         argmin_i = argmin(ξ)
-    #         argmax_i = argmax(ξ)
-    #         ξ[argmin_i] = floor(ξ[argmax_i]/2)
-    #         R[argmin_i] = R[argmax_i]
-    #         X[argmin_i] = X[argmax_i]
-    #         M[argmin_i] = M[argmax_i]
-    #         ξ[argmax_i] = floor(ξ[argmax_i]/2)
-    #     end
-    # elseif (minimum(ξ) <= 0 && maximum(ξ) <= 1)
-    #     # Cannot split highest multiplicity superdroplet, have to remove superdroplet from system
-    #     println("Superdroplet ", argmin(ξ), " has multiplicity of ", ξ[argmin(ξ)], ", removing from system")
-    #     deleteat!(R,argmin(ξ))
-    #     deleteat!(M,argmin(ξ))
-    #     deleteat!(X,argmin(ξ))
-    #     deleteat!(ξ,argmin(ξ))
-    #     Ns=Ns-1
-    # end
-return ξ,R,M,X
-end
-
-
-function coalescence_timestep!(ξ,R,X,Ns,Δt,ΔV;kernel=golovin)
-    I =shuffle(1:Ns)
-    L= [(I[l-1],I[l]) for l=2:2:length(I)]
-    scale = Ns*(Ns-1)/2/(Ns/2)
+    L= [[I[l-1],I[l]] for l=2:2:length(I)]
+    # scale = Ns*(Ns-1)/2/(Ns/2)
+    pαdt = map(pair -> pair_Ps(pair,ξ,R,X,kernel=kernel),L).*scale*Δt/ΔV
+    ϕ = rand(div(Ns, 2))
     
-
-    Threads.@threads for α=1:Int(floor(Ns/2))
-    # for α in 1:Int(floor(Ns/2))
-
-
-        jj=L[α][1] #struggled with choosing j>k so its hard coded
-        kk=L[α][2]
-
-        if ξ[jj]<ξ[kk]
-            k=jj
-            j=kk
-        else
-            j=jj
-            k=kk
-        end			
-
-        ϕ = rand()
-        pα = scale*calc_Ps(R[j],R[k],X[j],X[k],Δt,ΔV,ξ[j],ξ[k],kernel=kernel)
-
-        if ϕ < pα - floor(pα)
-            γ = floor(pα)+1
-        else ϕ >= pα - floor(pα)
-            γ = floor(pα)
-        end
-
-        if γ == 0
-            continue
-        end
-
-        γ_tilde = min(γ,floor(ξ[j]/ξ[k]))
-        # if γ_tilde == floor(ξ[j]/ξ[k])
-        #     println("limit exceeded")
-        # end
-
-        if ξ[j] - γ_tilde*ξ[k] > 0
-            ξ[j] = ξ[j]-γ_tilde*ξ[k]
-            R[k] = (γ_tilde*R[j]^3+R[k]^3)^(1/3)
-
-        elseif ξ[j] - γ_tilde*ξ[k] == 0
-            ξ[j] = floor(ξ[k]/2)
-            ξ[k] = ξ[k] - floor(ξ[k]/2)
-            R[j] = R[k] = (γ_tilde*R[j]^3+R[k]^3)^(1/3)
-        elseif ξ[j] - ξ[k] < 0
-            print("nooooo")
-        end
-
-    end
-    X = 4/3 * π .* R.^3
-
-    # #this takes a lot of searching.. could we put the failure condition somewhere else/
-    # if (minimum(ξ) <= 0 && maximum(ξ) > 1)
-
-    #     while (minimum(ξ) <= 0 && maximum(ξ) > 1)
-    #         # println("Superdroplet ", argmin(ξ), " has multiplicity of ", ξ[argmin(ξ)])
-    #         # Split superdroplet with highest multiplicity, half goes to argmin(ξ) and half stays
-    #         # Idea from Dziekan and Pawlowska (ACP, 2017) https://doi.org/10.5194/acp-17-13509-2017
-    #         argmin_i = argmin(ξ)
-    #         argmax_i = argmax(ξ)
-    #         ξ[argmin_i] = floor(ξ[argmax_i]/2)
-    #         R[argmin_i] = R[argmax_i]
-    #         X[argmin_i] = X[argmax_i]
-    #         ξ[argmax_i] = floor(ξ[argmax_i]/2)
-    #     end
-    # elseif (minimum(ξ) <= 0 && maximum(ξ) <= 1)
-    #     # Cannot split highest multiplicity superdroplet, have to remove superdroplet from system
-    #     println("Superdroplet ", argmin(ξ), " has multiplicity of ", ξ[argmin(ξ)], ", removing from system")
-    #     deleteat!(R,argmin(ξ))
-    #     deleteat!(X,argmin(ξ))
-    #     deleteat!(ξ,argmin(ξ))
-    #     Ns=Ns-1
-    # end
-return ξ,R,X
-end
-
-
-function coalescence_timestep_small_alpha!(droplets,Ns,y,Δt,ΔV;kernel=golovin)#,M)
-    I =(sample(1:Ns, (y*2), replace = false))
-    L= [(I[l-1],I[l]) for l=2:2:length(I)]
-    scale = Ns*(Ns-1)/2/(y)
-
-
-    Threads.@threads for α=1:y
-    # for α in 1:y
-
-        jj=L[α][1] #struggled with choosing j>k so its hard coded
-        kk=L[α][2]
-
-        if droplets[jj].ξ<droplets[kk].ξ
-            k=jj
-            j=kk
-        else
-            j=jj
-            k=kk
-        end			
-
-        ϕ = rand()
-        pα = scale*calc_Ps(droplets[j],droplets[k],Δt,ΔV,kernel=kernel)
-
-
-        if ϕ < pα - floor(pα)
-            γ = floor(pα)+1
-        else ϕ >= pα - floor(pα)
-            γ = floor(pα)
-        end
-
-        if γ == 0
-            continue
-        end
-
-        γ_tilde = min(γ,floor(droplets[j].ξ/droplets[k].ξ))
-        # if γ_tilde == floor(ξ[j]/ξ[k])
-        #     println("limit exceeded")
-        # end
-
-        if droplets[j].ξ - γ_tilde*droplets[k].ξ > 0
-            droplets[j].ξ = droplets[j].ξ-γ_tilde*droplets[k].ξ
-            droplets[k].R = (γ_tilde*droplets[j].R^3+droplets[k].R^3)^(1/3)
-            droplets[k].X = 4/3*π * droplets[k].R^3
-            droplets[k].M = γ_tilde*droplets[j].M+droplets[k].M
-
-        elseif droplets[j].ξ - γ_tilde*droplets[k].ξ == 0
-            droplets[j].ξ = floor(droplets[k].ξ/2)
-            droplets[k].ξ = droplets[k].ξ - floor(droplets[k].ξ/2)
-            droplets[j].R = droplets[k].R = (γ_tilde*droplets[j].R^3+droplets[k].R^3)^(1/3)
-            droplets[j].X = droplets[k].X = 4/3*π * droplets[j].R^3
-            droplets[j].M = droplets[k].M = γ_tilde*droplets[j].M+droplets[k].M
-        elseif droplets[j].ξ - droplets[k].ξ < 0
-            print("nooooo")
-        end 
-    end
-        #this takes a lot of searching.. could we put the failure condition somewhere else/
-        # min_ξ = findmin(droplet -> droplet.ξ, droplets)
-        # max_ξ = findmax(droplet -> droplet.ξ, droplets)
+    # Threads.@threads for α=1:Int(floor(Ns/2))
+    for (α, pair) in enumerate(L)
         
-        # if (min_ξ[1] <= 0 && max_ξ[1] > 1)
-        #     while (min_ξ[1] <= 0 && max_ξ[1] > 1)
-        #         # println("Superdroplet ", argmin(ξ), " has multiplicity of ", ξ[argmin(ξ)])
-        #         # Split superdroplet with highest multiplicity, half goes to argmin(ξ) and half stays
-        #         # Idea from Dziekan and Pawlowska (ACP, 2017) https://doi.org/10.5194/acp-17-13509-2017
-        #         min_ξ = findmin(droplet -> droplet.ξ, droplets)
-        #         max_ξ = findmax(droplet -> droplet.ξ, droplets)
-                
-        #         argmin_i = min_ξ[2]
-        #         argmax_i = max_ξ[2]
-        #         droplets[argmin_i].ξ = floor(max_ξ[1]/2)
-        #         droplets[argmin_i].R = droplets[argmax_i].R
-        #         droplets[argmin_i].X = droplets[argmax_i].X
-        #         droplets[argmin_i].M = droplets[argmax_i].M
-        #         droplets[argmax_i].ξ = floor(max_ξ[1]/2)
-        #     end
-        # elseif (min_ξ[1] <= 0 && max_ξ[1] <= 1)
-        #     # Cannot split highest multiplicity superdroplet, have to remove superdroplet from system
-        #     println("Superdroplet ", min_ξ[2], " has multiplicity of ", min_ξ[1], ", removing from system")
-        #     deleteat!(droplets,droplets[min_ξ[2]])
-        #     Ns=Ns-1 #do I need to return this??
-        # end
-return droplets
-end
+        if ϕ[α] >= pαdt[α]
+            continue
+        end
+        # ξ[pair], R[pair], X[pair] = sdm_update!(ξ[pair], R[pair], X[pair],ϕ[α], pαdt[α])
+        sdm_update!(pair,ξ,R,X,ϕ[α], pαdt[α])
+    end
+        
+# return ξ,R,X
+end 
 
-#---------------------------------------------------------
-# all_or_nothing! is the update scheme (Shima et al, 2009) given two superdroplets
-# can take two superdroplets or two sets of radius, volume, multiplicity, and ξ values
-# only set to update multiplicity, radius, and volume and solute mass
-# this is the parallelized part of the coalescence_timestep function above
+# #####
+function coalescence_timestep!(run::Serial,scheme::Adaptive,ξ,R,X,Ns,Δmodelt,ΔV,scale;kernel=golovin)
 
-function all_or_nothing!(R1,R2,X1,X2,ξ1,ξ2,M1,M2,scale,Δt,ΔV;kernel=golovin)
+    t_left = Δmodelt.+0
 
-        if ξ1<ξ2
-            large1 = false
-            Rj = R2
-            Rk = R1
-            Xj = X2
-            Xk = X1
-            ξj = ξ2
-            ξk = ξ1
-            Mj = M2
-            Mk = M1
-        else
-            large1 = true
-            Rj = R1
-            Rk = R2
-            Xj = X1
-            Xk = X2
-            ξj = ξ1
-            ξk = ξ2
-            Mj = M1
-            Mk = M2
-        end			
+    while t_left > 0
+        I =shuffle(1:Ns)
+        L= [[I[l-1],I[l]] for l=2:2:length(I)]
 
-        ϕ = rand()
-        pα = scale*calc_Ps(Rj,Rk,Xj,Xk,Δt,ΔV,ξj,ξk,kernel=kernel)
-
-        if ϕ < pα - floor(pα)
-            γ = floor(pα)+1
-        else ϕ >= pα - floor(pα)
-            γ = floor(pα)
+        ϕ = rand(div(Ns, 2))
+        deficit_opt = map(pair -> pair_Ps_adaptive(pair,ξ,R,X,scale/ΔV,kernel=kernel),L)
+        Δtm = minimum([last(pair) for pair in deficit_opt])
+        Δt = min(Δtm,t_left)
+        pαdt = [first(pair) for pair in deficit_opt].*Δt
+        
+        for (α, pair) in enumerate(L)
+            
+            if ϕ[α] >= pαdt[α]
+                continue
+            end
+            # ξ[pair], R[pair], X[pair] = sdm_update!(ξ[pair], R[pair], X[pair],ϕ[α], pαdt[α])
+            sdm_update!(pair,ξ,R,X,ϕ[α], pαdt[α])
+        end
+        
+        #this takes a lot of searching.. could we put the failure condition somewhere else?
+        if minimum(ξ) <= 0
+            split_highest_multiplicity!(ξ,R,X)
         end
 
-        if γ == 0
-            return R1,R2,X1,X2,ξ1,ξ2,M1,M2 #return in same order as input, no changes
-        end
+        t_left -= Δt
+    end
+# return ξ,R,X
+end 
 
-        γ_tilde = min(γ,floor(ξj/ξk))
-        # if γ_tilde == floor(ξ[j]/ξ[k])
-        #     println("limit exceeded")
-        # end
 
-        if ξj - γ_tilde*ξk > 0
-            ξj = ξj-γ_tilde*ξk
-            Rk = (γ_tilde*Rj^3+Rk^3)^(1/3)
-            Mk = γ_tilde*Mj+Mk
 
-        elseif ξj - γ_tilde*ξk == 0
-            ξj = floor(ξk/2)
-            ξk = ξk - floor(ξk/2)
-            Rj = Rk = (γ_tilde*Rj^3+Rk^3)^(1/3)
-            Mj = Mk = γ_tilde*Mj+Mk
-        elseif ξj - ξk < 0
-            print("nooooo")
-        end
 
-    Xj = 4/3 * π * Rj^3
-    Xk = 4/3 * π * Rk^3
-
-    if large1 == true
-        return R1,R2,X1,X2,ξ1,ξ2,M1,M2
+function sdm_update!(pair,ξ,R,X,ϕ,pα)
+    if ξ[pair[1]]<ξ[pair[2]]
+        k=pair[1]
+        j=pair[2]
     else
-        return R2,R1,X2,X1,ξ2,ξ1,M2,M1
-    end
-end
+        j=pair[1]
+        k=pair[2]
+    end		
 
-function all_or_nothing!(R1,R2,X1,X2,ξ1,ξ2,scale,Δt,ΔV;kernel=golovin)
-
-    if ξ1<ξ2
-        large1 = false
-        Rj = R2
-        Rk = R1
-        Xj = X2
-        Xk = X1
-        ξj = ξ2
-        ξk = ξ1
-
-    else
-        large1 = true
-        Rj = R1
-        Rk = R2
-        Xj = X1
-        Xk = X2
-        ξj = ξ1
-        ξk = ξ2
-
-    end			
-
-    ϕ = rand()
-    pα = scale*calc_Ps(Rj,Rk,Xj,Xk,Δt,ΔV,ξj,ξk,kernel=kernel)
-
-    if ϕ < pα - floor(pα)
-        γ = floor(pα)+1
-    else ϕ >= pα - floor(pα)
-        γ = floor(pα)
+    pα_floor = floor(pα)
+    if ϕ < pα - pα_floor
+        γ = pα_floor+1
+    elseif ϕ >= pα - pα_floor
+        γ = pα_floor
+    else 
+        println("err,pα_floor=",pα_floor," ϕ = ",ϕ)
     end
 
-    if γ == 0
-        return R1,R2,X1,X2,ξ1,ξ2 #return in same order as input, no changes
-    end
+    γ_tilde = min(γ,floor(ξ[j]/ξ[k]))
 
-    γ_tilde = min(γ,floor(ξj/ξk))
-    # if γ_tilde == floor(ξ[j]/ξ[k])
-    #     println("limit exceeded")
-    # end
-
-    if ξj - γ_tilde*ξk > 0
-        ξj = ξj-γ_tilde*ξk
-        Rk = (γ_tilde*Rj^3+Rk^3)^(1/3)
- 
-    elseif ξj - γ_tilde*ξk == 0
-        ξj = floor(ξk/2)
-        ξk = ξk - floor(ξk/2)
-        Rj = Rk = (γ_tilde*Rj^3+Rk^3)^(1/3)
-    elseif ξj - ξk < 0
+    if ξ[j] - γ_tilde*ξ[k] > 0
+        ξ[j] -= γ_tilde*ξ[k]
+        R[k] = (γ_tilde*R[j]^3+R[k]^3)^(1/3)
+        X[k] = 4/3 * π * R[k]^3
+    elseif ξ[j] - γ_tilde*ξ[k] == 0
+        ξ[j] = floor(ξ[k]/2)
+        ξ[k] -= floor(ξ[k]/2)
+        R[j] = R[k] = (γ_tilde*R[j]^3+R[k]^3)^(1/3)
+        X[k] = X[j] = 4/3 * π * R[k]^3
+    elseif ξ[j] - ξ[k] < 0
         print("nooooo")
     end
-
-    Xj = 4/3 * π * Rj^3
-    Xk = 4/3 * π * Rk^3
-
-if large1 == true
-    return R1,R2,X1,X2,ξ1,ξ2
-else
-    return R2,R1,X2,X1,ξ2,ξ1
-end
+    # return ξ,R,X
 end
 
-function all_or_nothing!(droplet1,droplet2,scale,Δt,ΔV;kernel=golovin)
-    droplets = [droplet1,droplet2]
-    if droplet1.ξ<droplet2.ξ    
-        large1 = false
-        j=2
-        k=1
-    else
-        large1 = true
-        j=1
-        k=2
+
+function split_highest_multiplicity!(ξ,R,X)
+    if maximum(ξ) > 1
+        while (minimum(ξ) <= 0 && maximum(ξ) > 1)
+            println("Superdroplet ", argmin(ξ), " has multiplicity of ", ξ[argmin(ξ)])
+            # Split superdroplet with highest multiplicity, half goes to argmin(ξ) and half stays
+            # Idea from Dziekan and Pawlowska (ACP, 2017) https://doi.org/10.5194/acp-17-13509-2017
+            argmin_i = argmin(ξ)
+            argmax_i = argmax(ξ)
+            ξ[argmin_i] = floor(ξ[argmax_i]/2)
+            R[argmin_i] = R[argmax_i]
+            X[argmin_i] = X[argmax_i]
+            # M[argmin_i] = M[argmax_i]
+            ξ[argmax_i] = floor(ξ[argmax_i]/2)
+        end
+    elseif (maximum(ξ) <= 1)
+        #right now, break the model until this situation gets handled
+        error("Highest and Lowest Superdroplet have ξ==0")
+
+        #Later:remove superdroplet.. how to handle between cells?
+
+        # # Cannot split highest multiplicity superdroplet, have to remove superdroplet from system
+        # println("Superdroplet ", argmin(ξ), " has multiplicity of ", ξ[argmin(ξ)], ", removing from system")
+        # deleteat!(R,argmin(ξ))
+        # # deleteat!(M,argmin(ξ))
+        # deleteat!(X,argmin(ξ))
+        # deleteat!(ξ,argmin(ξ))
+        # # Ns=Ns-1
     end
-
-        ϕ = rand()
-        pα = scale*calc_Ps(droplets[j],droplets[k],Δt,ΔV,kernel=kernel)
-
-
-        if ϕ < pα - floor(pα)
-            γ = floor(pα)+1
-        else ϕ >= pα - floor(pα)
-            γ = floor(pα)
-        end
-
-        if γ == 0
-            return droplet1,droplet2 #return in same order as input, no changes
-        end
-
-        γ_tilde = min(γ,floor(droplets[j].ξ/droplets[k].ξ))
-        # if γ_tilde == floor(ξ[j]/ξ[k])
-        #     println("limit exceeded")
-        # end
-
-        if droplets[j].ξ - γ_tilde*droplets[k].ξ > 0
-            droplets[j].ξ = droplets[j].ξ-γ_tilde*droplets[k].ξ
-            droplets[k].R = (γ_tilde*droplets[j].R^3+droplets[k].R^3)^(1/3)
-            droplets[k].X = 4/3*π * droplets[k].R^3
-            droplets[k].M = γ_tilde*droplets[j].M+droplets[k].M
-
-        elseif droplets[j].ξ - γ_tilde*droplets[k].ξ == 0
-            droplets[j].ξ = floor(droplets[k].ξ/2)
-            droplets[k].ξ = droplets[k].ξ - floor(droplets[k].ξ/2)
-            droplets[j].R = droplets[k].R = (γ_tilde*droplets[j].R^3+droplets[k].R^3)^(1/3)
-            droplets[j].X = droplets[k].X = 4/3*π * droplets[j].R^3
-            droplets[j].M = droplets[k].M = γ_tilde*droplets[j].M+droplets[k].M
-        elseif droplets[j].ξ - droplets[k].ξ < 0
-            print("nooooo")
-        end 
-
-    return droplet1,droplet2 #return in same order as input, changes made in place
 end
 
 
 
 
 
-###########################################################
-# The coalescence_unittest_graph! function is the coalescence unit test function that runs the 
-# coalescence_timestep function, plotting every 1200 seconds for 1 hour
+
+
+
+
+
+######### OLD DROPLETS structure
+
+# function coalescence_timestep!(droplets,Ns,Δt,ΔV;kernel=golovin)
+#     I =shuffle(1:Ns)
+#     L= [(I[l-1],I[l]) for l=2:2:length(I)]
+#     scale = Ns*(Ns-1)/2/(Ns/2)
+
+#     Threads.@threads for α=1:Int(floor(Ns/2))
+#     # for α in 1:Ns/2
+
+#         jj=L[α][1] #struggled with choosing j>k so its hard coded
+#         kk=L[α][2]
+
+#         if droplets[jj].ξ<droplets[kk].ξ
+#             k=jj
+#             j=kk
+#         else
+#             j=jj
+#             k=kk
+#         end			
+
+#         ϕ = rand()
+#         pα = scale*calc_Ps(droplets[j],droplets[k],Δt,ΔV,kernel=kernel)
+
+
+#         if ϕ < pα - floor(pα)
+#             γ = floor(pα)+1
+#         elseif ϕ >= pα - floor(pα)
+#             γ = floor(pα)
+#         end
+
+#         if γ == 0
+#             continue
+#         end
+
+#         γ_tilde = min(γ,floor(droplets[j].ξ/droplets[k].ξ))
+#         # if γ_tilde == floor(ξ[j]/ξ[k])
+#         #     println("limit exceeded")
+#         # end
+
+#         if droplets[j].ξ - γ_tilde*droplets[k].ξ > 0
+#             droplets[j].ξ = droplets[j].ξ-γ_tilde*droplets[k].ξ
+#             droplets[k].R = (γ_tilde*droplets[j].R^3+droplets[k].R^3)^(1/3)
+#             droplets[k].X = 4/3*π * droplets[k].R^3
+#             droplets[k].M = γ_tilde*droplets[j].M+droplets[k].M
+
+#         elseif droplets[j].ξ - γ_tilde*droplets[k].ξ == 0
+#             droplets[j].ξ = floor(droplets[k].ξ/2)
+#             droplets[k].ξ = droplets[k].ξ - floor(droplets[k].ξ/2)
+#             droplets[j].R = droplets[k].R = (γ_tilde*droplets[j].R^3+droplets[k].R^3)^(1/3)
+#             droplets[j].X = droplets[k].X = 4/3*π * droplets[j].R^3
+#             droplets[j].M = droplets[k].M = γ_tilde*droplets[j].M+droplets[k].M
+#         elseif droplets[j].ξ - droplets[k].ξ < 0
+#             print("nooooo")
+#         end 
+#     end
+
+#     #this takes a lot of searching.. could we put the failure condition somewhere else/
+#     # min_ξ = findmin(droplet -> droplet.ξ, droplets)
+#     # max_ξ = findmax(droplet -> droplet.ξ, droplets)
+#     # 
+#     # if (min_ξ[1] <= 0 && max_ξ[1] > 1)
+#     #     while (min_ξ[1] <= 0 && max_ξ[1] > 1)
+#     #         # println("Superdroplet ", argmin(ξ), " has multiplicity of ", ξ[argmin(ξ)])
+#     #         # Split superdroplet with highest multiplicity, half goes to argmin(ξ) and half stays
+#     #         # Idea from Dziekan and Pawlowska (ACP, 2017) https://doi.org/10.5194/acp-17-13509-2017
+#     #         min_ξ = findmin(droplet -> droplet.ξ, droplets)
+#     #         max_ξ = findmax(droplet -> droplet.ξ, droplets)
+            
+#     #         argmin_i = min_ξ[2]
+#     #         argmax_i = max_ξ[2]
+#     #         droplets[argmin_i].ξ = floor(max_ξ[1]/2)
+#     #         droplets[argmin_i].R = droplets[argmax_i].R
+#     #         droplets[argmin_i].X = droplets[argmax_i].X
+#     #         droplets[argmin_i].M = droplets[argmax_i].M
+#     #         droplets[argmax_i].ξ = floor(max_ξ[1]/2)
+#     #     end
+#     # elseif (min_ξ[1] <= 0 && max_ξ[1] <= 1)
+#     #     # Cannot split highest multiplicity superdroplet, have to remove superdroplet from system
+#     #     println("Superdroplet ", min_ξ[2], " has multiplicity of ", min_ξ[1], ", removing from system")
+#     #     deleteat!(droplets,droplets[min_ξ[2]])
+#     #     Ns=Ns-1 #do I need to return this??
+#     # end
+# return droplets
+# end
+
+
+
+# function coalescence_timestep_small_alpha!(droplets,Ns,y,Δt,ΔV;kernel=golovin)#,M)
+#     I =(sample(1:Ns, (y*2), replace = false))
+#     L= [(I[l-1],I[l]) for l=2:2:length(I)]
+#     scale = Ns*(Ns-1)/2/(y)
+
+
+#     Threads.@threads for α=1:y
+#     # for α in 1:y
+
+#         jj=L[α][1] #struggled with choosing j>k so its hard coded
+#         kk=L[α][2]
+
+#         if droplets[jj].ξ<droplets[kk].ξ
+#             k=jj
+#             j=kk
+#         else
+#             j=jj
+#             k=kk
+#         end			
+
+#         ϕ = rand()
+#         pα = scale*calc_Ps(droplets[j],droplets[k],Δt,ΔV,kernel=kernel)
+
+
+#         if ϕ < pα - floor(pα)
+#             γ = floor(pα)+1
+#         elseif ϕ >= pα - floor(pα)
+#             γ = floor(pα)
+#         end
+
+#         if γ == 0
+#             continue
+#         end
+
+#         γ_tilde = min(γ,floor(droplets[j].ξ/droplets[k].ξ))
+#         # if γ_tilde == floor(ξ[j]/ξ[k])
+#         #     println("limit exceeded")
+#         # end
+
+#         if droplets[j].ξ - γ_tilde*droplets[k].ξ > 0
+#             droplets[j].ξ = droplets[j].ξ-γ_tilde*droplets[k].ξ
+#             droplets[k].R = (γ_tilde*droplets[j].R^3+droplets[k].R^3)^(1/3)
+#             droplets[k].X = 4/3*π * droplets[k].R^3
+#             droplets[k].M = γ_tilde*droplets[j].M+droplets[k].M
+
+#         elseif droplets[j].ξ - γ_tilde*droplets[k].ξ == 0
+#             droplets[j].ξ = floor(droplets[k].ξ/2)
+#             droplets[k].ξ = droplets[k].ξ - floor(droplets[k].ξ/2)
+#             droplets[j].R = droplets[k].R = (γ_tilde*droplets[j].R^3+droplets[k].R^3)^(1/3)
+#             droplets[j].X = droplets[k].X = 4/3*π * droplets[j].R^3
+#             droplets[j].M = droplets[k].M = γ_tilde*droplets[j].M+droplets[k].M
+#         elseif droplets[j].ξ - droplets[k].ξ < 0
+#             print("nooooo")
+#         end 
+#     end
+#         #this takes a lot of searching.. could we put the failure condition somewhere else/
+#         # min_ξ = findmin(droplet -> droplet.ξ, droplets)
+#         # max_ξ = findmax(droplet -> droplet.ξ, droplets)
+        
+#         # if (min_ξ[1] <= 0 && max_ξ[1] > 1)
+#         #     while (min_ξ[1] <= 0 && max_ξ[1] > 1)
+#         #         # println("Superdroplet ", argmin(ξ), " has multiplicity of ", ξ[argmin(ξ)])
+#         #         # Split superdroplet with highest multiplicity, half goes to argmin(ξ) and half stays
+#         #         # Idea from Dziekan and Pawlowska (ACP, 2017) https://doi.org/10.5194/acp-17-13509-2017
+#         #         min_ξ = findmin(droplet -> droplet.ξ, droplets)
+#         #         max_ξ = findmax(droplet -> droplet.ξ, droplets)
+                
+#         #         argmin_i = min_ξ[2]
+#         #         argmax_i = max_ξ[2]
+#         #         droplets[argmin_i].ξ = floor(max_ξ[1]/2)
+#         #         droplets[argmin_i].R = droplets[argmax_i].R
+#         #         droplets[argmin_i].X = droplets[argmax_i].X
+#         #         droplets[argmin_i].M = droplets[argmax_i].M
+#         #         droplets[argmax_i].ξ = floor(max_ξ[1]/2)
+#         #     end
+#         # elseif (min_ξ[1] <= 0 && max_ξ[1] <= 1)
+#         #     # Cannot split highest multiplicity superdroplet, have to remove superdroplet from system
+#         #     println("Superdroplet ", min_ξ[2], " has multiplicity of ", min_ξ[1], ", removing from system")
+#         #     deleteat!(droplets,droplets[min_ξ[2]])
+#         #     Ns=Ns-1 #do I need to return this??
+#         # end
+# return droplets
+# end
+
+
