@@ -6,13 +6,30 @@
 using Distributions
 using Combinatorics
 using Random
-export init_ξ_const,terminal_v,collision_efficiency,hydrodynamic,golovin,calc_Ps,coalescence_timestep!,all_or_nothing!,coalescence_unittest_graph!
-export Serial, Parallel
+using StaticArrays
+export init_ξ_const,init_logarithmic,terminal_v,collision_efficiency,hydrodynamic,golovin,calc_Ps,coalescence_timestep!,all_or_nothing!,coalescence_unittest_graph!
+export Serial, Parallel,Adaptive,none,coag_settings
+
 
 struct Serial end
 struct Parallel end
 struct Adaptive end
 struct none end
+
+Base.@kwdef struct coag_settings{FT<:AbstractFloat}
+    Δt::FT = FT(1.0)
+    ΔV::FT = FT(1e6)
+    Ns::Int # number of superdroplets
+    scale::FT
+    R_min::FT = FT(1e-9)
+    R_max::FT = FT(1e-3)
+    golovin_kernel_coeff::FT = FT(1.5e3)
+    hydrodynamic_collision_eff_func::Bool = false
+    kernel::Function = golovin # golovin, hydrodynamic
+    n0::FT = FT(2^23) # initial droplet concentration
+    R0::FT = FT(30.531e-6) # initial radius
+end
+
 #functions:
 
 #INITIALIZATION
@@ -28,18 +45,18 @@ struct none end
     #golovin(R1,R2,X,Xs),               returns golovin kernel calc
 
 #SDM FUNCTIONS
-    #calc_Ps(droplet1,droplet2,Δt,ΔV;kernel=golovin),                       returns Ps
-    #calc_Ps(R1,R2,X,Xs,Δt,ΔV,ξj,ξk;kernel=golovin),                        returns Ps
-    #coalescence_timestep!(droplets,Ns,Δt,ΔV;kernel=golovin),               returns droplets
-    #coalescence_timestep!(ξ,R,X,Ns,Δt,ΔV;kernel=golovin),                  returns ξ,R,X
-    #coalescence_timestep!(ξ,R,M,X,Ns,Δt,ΔV;kernel=golovin),                returns ξ,R,M,X
-    #all_or_nothing!(R1,R2,X1,X2,ξ1,ξ2,M1,M2,scale,Δt,ΔV;kernel=golovin),   returns R1,R2,X1,X2,ξ1,ξ2,M1,M2
-    #all_or_nothing!(R1,R2,X1,X2,ξ1,ξ2,scale,Δt,ΔV;kernel=golovin),         returns R1,R2,X1,X2,ξ1,ξ2
-    #all_or_nothing!(droplet1,droplet2,scale,Δt,ΔV;kernel=golovin),         returns droplet1,droplet2
+    #calc_Ps(droplet1,droplet2,Δt,ΔV ),                       returns Ps
+    #calc_Ps(R1,R2,X,Xs,Δt,ΔV,ξj,ξk ),                        returns Ps
+    #coalescence_timestep!(droplets,Ns,Δt,ΔV ),               returns droplets
+    #coalescence_timestep!(ξ,R,X,Ns,Δt,ΔV ),                  returns ξ,R,X
+    #coalescence_timestep!(ξ,R,M,X,Ns,Δt,ΔV ),                returns ξ,R,M,X
+    #all_or_nothing!(R1,R2,X1,X2,ξ1,ξ2,M1,M2,scale,Δt,ΔV ),   returns R1,R2,X1,X2,ξ1,ξ2,M1,M2
+    #all_or_nothing!(R1,R2,X1,X2,ξ1,ξ2,scale,Δt,ΔV ),         returns R1,R2,X1,X2,ξ1,ξ2
+    #all_or_nothing!(droplet1,droplet2,scale,Δt,ΔV ),         returns droplet1,droplet2
 
 
 #SMALL ALPHA STUDY
-    #coalescence_timestep_small_alpha!(droplets,Ns,y,Δt,ΔV;kernel=golovin), returns droplets
+    #coalescence_timestep_small_alpha!(droplets,Ns,y,Δt,ΔV ), returns droplets
 
 #UNIT TEST RUN, RETURNS GRAPH 0:1200:3600 seconds
     #coalescence_unittest_graph!(droplets,Ns,Δt,ΔV;smooth=true,label=true,kernel=golovin,
@@ -59,25 +76,136 @@ struct none end
 # the function draws from an exponential distribution
 # MOVE
 
-function init_ξ_const(Ns,ΔV,n0,R0)
-    ξstart = n0*ΔV/Ns*ones(Float64,Ns)
+function init_ξ_const(settings::coag_settings{FT}) where FT<:AbstractFloat
+    Ns = settings.Ns
+    ΔV = settings.ΔV
+    n0 = settings.n0
+    R0 = settings.R0
+    ξstart::Vector{Int} = (n0*ΔV/Ns*ones(Ns))
     # R0 = Float64(30.531e-6) # meters
     X0 = Float64(4*π/3*R0^3) # initial volume m3    
-    Xstart = rand(Exponential(X0), Ns)
-    Rstart = (3 .*Xstart./(4*π)).^(1/3)
+    Xstart::Vector{FT} = (rand(Exponential(X0), Ns))
+    Rstart::Vector{FT} = ((3 .*Xstart./(4*π)).^(1/3))
     return ξstart, Rstart, Xstart
 end
 
-function init_ξ_const(Ns,ΔV,n0,R0,M0)
-    ξstart = n0*ΔV/Ns*ones(Float64,Ns)
-    # R0 = Float64(30.531e-6) # meters
-    X0 = Float64(4*π/3*R0^3) # initial volume m3
-    Xstart = rand(Exponential(X0), Ns)
-    Rstart = (3 .*Xstart./(4*π)).^(1/3)
-    Mstart = rand(Exponential(M0), Ns)
-    return ξstart, Rstart, Xstart,Mstart
+
+# function init_ξ_const(Ns,ΔV,n0,R0,M0)
+#     ξstart = n0*ΔV/Ns*ones(Float64,Ns)
+#     # R0 = Float64(30.531e-6) # meters
+#     X0 = Float64(4*π/3*R0^3) # initial volume m3
+#     Xstart = rand(Exponential(X0), Ns)
+#     Rstart = (3 .*Xstart./(4*π)).^(1/3)
+#     Mstart = rand(Exponential(M0), Ns)
+#     return ξstart, Rstart, Xstart,Mstart
+# end
+
+
+function init_logarithmic(settings::coag_settings{FT})where FT<:AbstractFloat
+    Ns = settings.Ns
+    ΔV = settings.ΔV
+    n0 = settings.n0
+    R0 = settings.R0
+    R_min = settings.R_min
+    R_max = settings.R_max
+
+    X0 = (4/3) * π * R0^3
+    exp_dist = Exponential(X0)
+    boundaries_found = false
+    while boundaries_found == false
+        radius_bins = 10 .^ range(log10(R_min), log10(R_max), length=Ns+1)
+        # Calculate the volume for each bin
+        volumes = (4/3) * π .* radius_bins.^3
+        vmin = (4/3) * π .* radius_bins[1]^3
+        vmax = (4/3) * π .* radius_bins[end-1]^3
+        
+        pdf_min = pdf(exp_dist, vmin)
+        pdf_max = pdf(exp_dist, vmax)
+
+        first_bin_dr = radius_bins[2]-radius_bins[1]
+        last_bin_dr = radius_bins[end]-radius_bins[end-1]
+        dvdr_first = 4 * π * radius_bins[1].^2
+        dvdr_last = 4 * π * radius_bins[end-1].^2
+
+        ξ_first = pdf_min * first_bin_dr * dvdr_first * (n0*ΔV)
+        ξ_last = pdf_max * last_bin_dr * dvdr_last * (n0*ΔV)
+
+        if ξ_first >= 1 && ξ_last >=1
+            boundaries_found = true
+        else 
+            if ξ_first <= 1
+                R_min *= 1.01
+            end
+            if ξ_last <= 1
+                R_max *= 0.99
+            end
+        end
+    end
+
+    radius_bins_new = 10 .^ range(log10(R_min), log10(R_max), length=Ns+1)
+    sd_radii::Vector{FT} = [rand(Uniform(radius_bins_new[i], radius_bins_new[i+1])) for i in 1:Ns]
+    volumes::Vector{FT} = (4/3) * π .* sd_radii.^3
+    pdf_values = pdf.(exp_dist, volumes)
+    bin_widths_new = diff(radius_bins_new)
+    dvdr = 4 * π .* sd_radii.^2
+    multiplicities = pdf_values .* bin_widths_new .* dvdr * (n0*ΔV)
+    ξstart::Vector{Int} = floor.(multiplicities.+0.5)
+
+return ξstart, sd_radii, volumes
 end
 
+function init_uniform_sd(settings::coag_settings{FT})where FT<:AbstractFloat
+    Ns = settings.Ns
+    ΔV = settings.ΔV
+    n0 = settings.n0
+    R0 = settings.R0
+    R_min = settings.R_min
+    R_max = settings.R_max
+
+    X0 = (4/3) * π * R0^3
+    exp_dist = Exponential(X0)
+    boundaries_found = false
+    while boundaries_found == false
+        radius_bins = range(R_min, R_max, length=Ns+1)
+        # Calculate the volume for each bin
+        # volumes = (4/3) * π .* radius_bins.^3
+        vmin = (4/3) * π * radius_bins[1]^3
+        vmax = (4/3) * π * radius_bins[end-1]^3
+        
+        pdf_min = pdf(exp_dist, vmin)
+        pdf_max = pdf(exp_dist, vmax)
+
+        first_bin_dr = radius_bins[2]-radius_bins[1]
+        last_bin_dr = radius_bins[end]-radius_bins[end-1]
+        dvdr_first = 4 * π * radius_bins[1].^2
+        dvdr_last = 4 * π * radius_bins[end-1].^2
+
+        ξ_first = pdf_min * first_bin_dr * dvdr_first * (n0*ΔV)
+        ξ_last = pdf_max * last_bin_dr * dvdr_last * (n0*ΔV)
+
+        if ξ_first >= 1 && ξ_last >=1
+            boundaries_found = true
+        else 
+            if ξ_first <= 1
+                R_min *= 1.01
+            end
+            if ξ_last <= 1
+                R_max *= 0.99
+            end
+        end
+    end
+
+    radius_bins_new = range(R_min, R_max, length=Ns+1)
+    sd_radii::Vector{FT} = [rand(Uniform(radius_bins_new[i], radius_bins_new[i+1])) for i in 1:Ns]
+    volumes::Vector{FT} = (4/3) * π .* sd_radii.^3
+    pdf_values = pdf.(exp_dist, volumes)
+    bin_widths_new = diff(radius_bins_new)
+    dvdr = 4 * π .* sd_radii.^2
+    multiplicities = pdf_values .* bin_widths_new .* dvdr * (n0*ΔV)
+    ξstart::Vector{Int} = floor.(multiplicities.+0.5)
+
+return ξstart, sd_radii, volumes
+end
 
 
 
@@ -86,7 +214,7 @@ end
 #---------------------------------------------------------
 
 # terminal velocity of droplets
-function terminal_v(r) # terminal velocity 
+function terminal_v(r)::FT # terminal velocity 
     # Tables from
     # THE TERMINAL VELOCITY OF FALL FOR WATER DROPLETS IN STAGNANT AIR
     # Gunn, R., Kinzer, G. D. (1949), https://doi.org/10.1175/1520-0469(1949)006<0243:TTVOFF>2.0.CO;2
@@ -133,18 +261,18 @@ end
 # structures and one for two radius values -- it takes dummy volumes so 
 # that the call could be generalized in the coalescence_timestep function
 
-function hydrodynamic(droplet1,droplet2)
+function hydrodynamic(droplet1,droplet2,settings::coag_settings{FT})::FT where FT<:AbstractFloat
     E = collision_efficiency(droplet1.R,droplet2.R)
     Rsum = (droplet1.R+droplet2.R) # sum of radius is in meters
     vdif = abs(terminal_v(droplet1.R)-terminal_v(droplet2.R))
     return E*π*Rsum^2*vdif
 end
 
-function hydrodynamic(R,X,j,k)
+function hydrodynamic(R,X,j,k,settings::coag_settings{FT})::FT where FT<:AbstractFloat
     E = collision_efficiency(R[j],R[k])
     Rsum = (R[j]+R[k]) # sum of radius is in meters
-    vdif = abs(terminal_v(R[j]).-terminal_v(R[k]))
-    return E .*π .* Rsum^2 .*vdif
+    vdif = abs(terminal_v(R[j])-terminal_v(R[k]))
+    return E *π * Rsum^2 *vdif
 end
 
 #---------------------------------------------------------
@@ -155,16 +283,27 @@ end
 # structures and one for two volume values -- it takes dummy radius values so 
 # that the call could be generalized in the coalescence_timestep function
 
-function golovin(droplet1,droplet2)
-    b = 1.5e3 # seconds^-1
-    Xsum = droplet1.X+droplet2.X # m3
-    return b*Xsum
-end
+# function golovin(droplet1,droplet2,coag_settings)
+#     b = 1.5e3 # seconds^-1
+#     Xsum = droplet1.X+droplet2.X # m3
+#     return b*Xsum
+# end
 
-function golovin(R,X,j,k)
-    b = 1.5e3 # seconds^-1
-    Xsum = X[j]+X[k] # m3
-    return b*Xsum
+# function golovin(R,X,j,k,settings::coag_settings{FT})where FT<:AbstractFloat
+#     # b = 1.5e3 # seconds^-1
+#     Xsum = X[j]+X[k] # m3
+#     return settings.golovin_kernel_coeff*Xsum
+# end
+
+# @inline function golovin(R::Vector{FT}, X::Vector{FT}, j::Int, k::Int, settings::coag_settings{FT})::FT where FT<:AbstractFloat
+#     Xsum = X[j] + X[k] # m3
+#     return settings.golovin_kernel_coeff * Xsum
+# end
+
+@inline function golovin(X::Vector{FT}, (j,k)::Tuple{Int,Int}, settings::coag_settings{FT})::FT where FT<:AbstractFloat
+    # Xsum::FT = X[j] + X[k] # m3
+    return settings.golovin_kernel_coeff *(X[j] + X[k])# Xsum
+    # return FT(1500)*Xsum
 end
 
 #---------------------------------------------------------
@@ -177,34 +316,58 @@ end
 #free radius, volume, and multiplicity values
 
 
-function calc_Ps(droplet1,droplet2,Δt,ΔV;kernel=golovin)
-    Pjk = kernel(droplet1,droplet2)*Δt/ΔV
+function calc_Ps(droplet1,droplet2,Δt,ΔV,settings::coag_settings{FT} )::FT where FT<:AbstractFloat
+    Pjk = settings.kernel(droplet1,droplet2,settings)*Δt/ΔV
     Ps = max(droplet1.ξ,droplet2.ξ)*Pjk 
     return Ps
 end
 
-function calc_Ps(R,X,ξ,j,k,Δt,ΔV;kernel=golovin)
-    return max(ξ[j],ξ[k])*kernel(R,X,j,k)*Δt/ΔV
+# function calc_Ps(R,X,ξ,j,k,settings::coag_settings{FT} )where FT<:AbstractFloat
+#     return max(ξ[j],ξ[k])*settings.kernel(R,X,j,k,settings)*settings.Δt/settings.ΔV
+# end
+
+function calc_Ps(R::Vector{FT}, X::Vector{FT}, ξ::Vector{Int}, j::Int, k::Int, settings::coag_settings{FT})::FT where FT<:AbstractFloat
+    return max(ξ[j], ξ[k]) * settings.kernel(R, X, j, k, settings) * settings.Δt / settings.ΔV
 end
 
 
+# function pair_Ps_adaptive(pair,ξ,R,X,settings::coag_settings{FT})where FT<:AbstractFloat
+#     ξj = max(ξ[pair[1]],ξ[pair[2]])
+#     ξk = min(ξ[pair[1]],ξ[pair[2]])
+#     # if ξk==0
+#     #     println("oop")
+#     # end
+#     pαdt = ξj*settings.kernel(R,X,pair[1],pair[2],settings)*settings.scale/settings.ΔV
+#     Δtmax = (div(ξj,ξk))/pαdt #div gets the floor 
+#     return pαdt,Δtmax
+# end
 
-function pair_Ps_adaptive(pair,ξ,R,X,ratio_scale_V;kernel=golovin)
-    ξj = max(ξ[pair[1]],ξ[pair[2]])
-    ξk = min(ξ[pair[1]],ξ[pair[2]])
-    # if ξk==0
-    #     println("oop")
-    # end
-    pαdt = ξj*kernel(R,X,pair[1],pair[2])*ratio_scale_V
-    Δtmax = (div(ξj,ξk))/pαdt #div gets the floor 
-    return pαdt,Δtmax
+function pair_Ps_adaptive(pair::Tuple{Int,Int}, ξ::Vector{Int}, X::Vector{FT}, settings::coag_settings{FT})::Tuple{FT,FT} where FT<:AbstractFloat
+    ξk::FT, ξj::FT = if ξ[pair[1]] < ξ[pair[2]]
+        ξ[pair[1]], ξ[pair[2]]
+    else
+        ξ[pair[2]], ξ[pair[1]]
+    end
+    # # ξj::FT = max(ξ[pair[1]], ξ[pair[2]])
+    # ξk::FT = min(ξ[pair[1]], ξ[pair[2]])
+    
+    pαdt::FT = ξj * settings.kernel(X, pair, settings) * settings.scale / settings.ΔV
+    Δtmax::FT = (div(ξj, ξk)) / pαdt # div gets the floor 
+    
+    return pαdt, Δtmax
 end
 
-#inline
-function pair_Ps(pair,ξ,R,X;kernel=golovin)
-    return max(ξ[pair[1]],ξ[pair[2]])*kernel(R,X,pair[1],pair[2])
-end
 
+# function pair_Ps(pair::Tuple{Int,Int}, ξ::Vector{Int}, R::Vector{FT}, X::Vector{FT}, settings::coag_settings{FT})::FT where FT<:AbstractFloat
+#     return max(ξ[pair[1]], ξ[pair[2]]) * settings.kernel(R, X, pair[1], pair[2], settings)
+# end
+
+# @inline function pair_Ps((j,k)::Tuple{Int,Int}, ξ::Vector{Int}, R::Vector{FT}, X::Vector{FT}, settings::coag_settings{FT})::FT where FT<:AbstractFloat
+#     return max(ξ[j], ξ[k]) * settings.kernel(R, X, j, k, settings)
+# end
+@inline function pair_Ps((j,k)::Tuple{Int,Int}, ξ::Vector{Int}, X::Vector{FT}, settings::coag_settings{FT})::FT where FT<:AbstractFloat
+    return max(ξ[j], ξ[k]) * settings.kernel(X,(j,k), settings)
+end
 
 
 #----------------------------------------------------------
@@ -222,55 +385,119 @@ end
 
 
 
-
-
-
+# @inline function compute_pαdt(L::Vector{Tuple{Int,Int}}, ξ::Vector{Int}, R::Vector{FT}, X::Vector{FT}, coagsettings::coag_settings{FT})::Vector{FT} where FT<:AbstractFloat
+#     return map(pair -> pair_Ps(pair, ξ, R, X, coagsettings), L) .* coagsettings.scale * coagsettings.Δt / coagsettings.ΔV
+# end
+@inline function compute_pαdt(L::Vector{Tuple{Int,Int}}, ξ::Vector{Int}, X::Vector{FT}, coagsettings::coag_settings{FT})::Vector{FT} where FT<:AbstractFloat
+    return map(pair -> pair_Ps(pair, ξ, X, coagsettings), L) .* coagsettings.scale * coagsettings.Δt / coagsettings.ΔV
+end
 
 # #####
-function coalescence_timestep!(run::Serial,scheme::none,ξ,R,X,Ns,Δt,ΔV,scale;kernel=golovin)
-    I =shuffle(1:Ns)
-    L= [[I[l-1],I[l]] for l=2:2:length(I)]
-    # scale = Ns*(Ns-1)/2/(Ns/2)
-    pαdt = map(pair -> pair_Ps(pair,ξ,R,X,kernel=kernel),L).*scale*Δt/ΔV
-    ϕ = rand(div(Ns, 2))
+function coalescence_timestep!(run::Serial,scheme::none, ξ::Vector{Int}, R::Vector{FT}, 
+    X::Vector{FT}, I::Vector{Int},ϕ::Vector{FT},
+    settings::coag_settings{FT}) where FT<:AbstractFloat
+    Ns::Int = settings.Ns
     
-    # Threads.@threads for α=1:Int(floor(Ns/2))
-    for (α, pair) in enumerate(L)
+    shuffle!(I)
+    L::Vector{Tuple{Int, Int}} = [(I[l-1], I[l]) for l in 2:2:Ns]
+
+    # pαdt = map(pair -> pair_Ps(pair,ξ,R,X,settings),L).*settings.scale*settings.Δt/settings.ΔV
+    pαdt = compute_pαdt(L, ξ, X, settings)
+    rand!(ϕ)
+    # ϕ = rand(FT, div(settings.Ns, 2))
+
+    # for (α, pair) in enumerate(L)
+    for α::Int in 1:div(Ns, 2)
         
         if ϕ[α] >= pαdt[α]
             continue
         end
-        # ξ[pair], R[pair], X[pair] = sdm_update!(ξ[pair], R[pair], X[pair],ϕ[α], pαdt[α])
-        sdm_update!(pair,ξ,R,X,ϕ[α], pαdt[α])
+        sdm_update!(L[α],ξ,R,X,ϕ[α], pαdt[α])
     end
-        
-# return ξ,R,X
+
 end 
 
-# #####
-function coalescence_timestep!(run::Serial,scheme::Adaptive,ξ,R,X,Ns,Δmodelt,ΔV,scale;kernel=golovin)
+function construct_L(I::Vector{Int}, Ns::Int)::Vector{Tuple{Int, Int}}
+    L = Vector{Tuple{Int, Int}}(undef, div(Ns, 2))
+    shuffle!(I)
+    Threads.@threads for l in 2:2:Ns
+        L[div(l, 2)] = (I[l-1], I[l])
+    end
+    return L
+end
 
-    t_left = Δmodelt.+0
+function coalescence_timestep!(run::Parallel, scheme::none,ξ::Vector{Int}, R::Vector{FT}, 
+    X::Vector{FT}, I::Vector{Int},ϕ::Vector{FT},
+    settings::coag_settings{FT}) where FT<:AbstractFloat
+
+    Ns = settings.Ns
+    L = construct_L(I, Ns)
+
+    Threads.@threads for α in 1:div(Ns, 2)
+        pαdt = pair_Ps(L[α], ξ, X, settings) * settings.scale * settings.Δt / settings.ΔV
+        ϕ[α] = rand(FT)
+        # rand!(ϕ)
+        if ϕ[α] >= pαdt
+            continue
+        end
+        sdm_update!(L[α], ξ, R, X, ϕ[α], pαdt)
+    end
+end
+
+function adaptive_pαdt(L::Vector{Tuple{Int,Int}}, ξ::Vector{Int}, X::Vector{FT},t_left::FT, settings::coag_settings{FT}) where FT<:AbstractFloat
+    deficit_opt = map(pair -> pair_Ps_adaptive(pair,ξ,X,settings),L)
+    Δtm = minimum([last(pair) for pair in deficit_opt])
+    Δt = min(Δtm,t_left)
+    pαdt = [first(pair) for pair in deficit_opt].*Δt
+    return pαdt, Δt
+end
+
+function adaptive_pαdt_parallel(L::Vector{Tuple{Int,Int}}, ξ::Vector{Int}, X::Vector{FT},t_left::FT, settings::coag_settings{FT}) where FT<:AbstractFloat
+    pd = Vector{FT}(undef, length(L))
+    tm = Vector{FT}(undef, length(L))
+    Threads.@threads for α in 1:length(L)
+        pd[α],tm[α] = pair_Ps_adaptive(L[α],ξ,X,settings)
+    end
+    Δtm = minimum(tm)
+    Δt = min(Δtm,t_left)
+    pαdt = pd.*Δt
+    return pαdt, Δt
+end
+
+# #####
+function coalescence_timestep!(run::Serial,scheme::Adaptive,ξ::Vector{Int}, R::Vector{FT}, 
+    X::Vector{FT}, I::Vector{Int},ϕ::Vector{FT},
+    settings::coag_settings{FT}) where FT<:AbstractFloat
+    Ns = settings.Ns
+    t_left = settings.Δt #+ 0
 
     while t_left > 0
-        I =shuffle(1:Ns)
-        L= [[I[l-1],I[l]] for l=2:2:length(I)]
+        shuffle!(I)
+        L::Vector{Tuple{Int, Int}} = [(I[l-1], I[l]) for l in 2:2:Ns]
 
-        ϕ = rand(div(Ns, 2))
-        deficit_opt = map(pair -> pair_Ps_adaptive(pair,ξ,R,X,scale/ΔV,kernel=kernel),L)
-        Δtm = minimum([last(pair) for pair in deficit_opt])
-        Δt = min(Δtm,t_left)
-        pαdt = [first(pair) for pair in deficit_opt].*Δt
+        rand!(ϕ)
+        # deficit_opt = map(pair -> pair_Ps_adaptive(pair,ξ,X,settings),L)
+        # Δtm = minimum([last(pair) for pair in deficit_opt])
+        # Δt = min(Δtm,t_left)
+        # pαdt = [first(pair) for pair in deficit_opt].*Δt
+        pαdt, Δt = adaptive_pαdt(L, ξ, X, t_left ,settings)
         
-        for (α, pair) in enumerate(L)
+        # for (α, pair) in enumerate(L)
             
+        #     if ϕ[α] >= pαdt[α]
+        #         continue
+        #     end
+        #     sdm_update!(pair,ξ,R,X,ϕ[α], pαdt[α])
+        # end
+
+        for α::Int in 1:div(Ns, 2)
+        
             if ϕ[α] >= pαdt[α]
                 continue
             end
-            # ξ[pair], R[pair], X[pair] = sdm_update!(ξ[pair], R[pair], X[pair],ϕ[α], pαdt[α])
-            sdm_update!(pair,ξ,R,X,ϕ[α], pαdt[α])
+            sdm_update!(L[α],ξ,R,X,ϕ[α], pαdt[α])
         end
-        
+
         #this takes a lot of searching.. could we put the failure condition somewhere else?
         if minimum(ξ) <= 0
             split_highest_multiplicity!(ξ,R,X)
@@ -278,46 +505,77 @@ function coalescence_timestep!(run::Serial,scheme::Adaptive,ξ,R,X,Ns,Δmodelt,�
 
         t_left -= Δt
     end
-# return ξ,R,X
 end 
 
+#still dev
+# function coalescence_timestep!(run::Parallel,scheme::Adaptive,ξ::Vector{Int}, R::Vector{FT}, 
+#     X::Vector{FT}, I::Vector{Int},ϕ::Vector{FT},
+#     settings::coag_settings{FT}) where FT<:AbstractFloat
+
+#     Ns = settings.Ns
+#     t_left = settings.Δt
+
+#     while t_left > 0
+#         L = construct_L(I, Ns)
+
+#         # ϕ = rand(div(Ns, 2))
+
+#         pαdt,Δt = adaptive_pαdt_parallel(L, ξ, X, t_left, settings)
+        
+#         Threads.@threads for α=1:Int(floor(Ns/2))
+            
+#             if ϕ[α] >= pαdt[α]
+#                 continue
+#             end
+#             sdm_update!(L[α],ξ,R,X,ϕ[α], pαdt[α])
+#         end
+
+#         #this takes a lot of searching.. could we put the failure condition somewhere else?
+#         if minimum(ξ) <= 0
+#             split_highest_multiplicity!(ξ,R,X)
+#         end
+
+#         t_left -= Δt
+#     end
+# end 
 
 
 
-function sdm_update!(pair,ξ,R,X,ϕ,pα)
-    if ξ[pair[1]]<ξ[pair[2]]
-        k=pair[1]
-        j=pair[2]
+function sdm_update!(pair::Tuple{Int,Int}, ξ::Vector{Int}, R::Vector{FT}, X::Vector{FT}, ϕ::FT, pα::FT) where FT<:AbstractFloat
+        k, j = if ξ[pair[1]] < ξ[pair[2]]
+        pair[1], pair[2]
     else
-        j=pair[1]
-        k=pair[2]
-    end		
-
-    pα_floor = floor(pα)
-    if ϕ < pα - pα_floor
-        γ = pα_floor+1
-    elseif ϕ >= pα - pα_floor
-        γ = pα_floor
-    else 
-        println("err,pα_floor=",pα_floor," ϕ = ",ϕ)
+        pair[2], pair[1]
     end
 
-    γ_tilde = min(γ,floor(ξ[j]/ξ[k]))
+    pα_floor::FT = floor(pα)
+    γ::FT = if ϕ < pα - pα_floor
+        pα_floor + 1
+    else
+        pα_floor
+    end
 
-    if ξ[j] - γ_tilde*ξ[k] > 0
-        ξ[j] -= γ_tilde*ξ[k]
-        R[k] = (γ_tilde*R[j]^3+R[k]^3)^(1/3)
+    γ_tilde::FT = min(γ, floor(ξ[j] / ξ[k]))
+    ξ_j_minus_γ_tilde_ξ_k = ξ[j] - γ_tilde * ξ[k]
+
+    if ξ_j_minus_γ_tilde_ξ_k > 0
+        ξ[j] = ξ_j_minus_γ_tilde_ξ_k
+        R_k_cubed = γ_tilde * R[j]^3 + R[k]^3
+        R[k] = R_k_cubed^(1/3)
         X[k] = 4/3 * π * R[k]^3
-    elseif ξ[j] - γ_tilde*ξ[k] == 0
-        ξ[j] = floor(ξ[k]/2)
-        ξ[k] -= floor(ξ[k]/2)
-        R[j] = R[k] = (γ_tilde*R[j]^3+R[k]^3)^(1/3)
+    elseif ξ_j_minus_γ_tilde_ξ_k == 0
+        half_ξ_k = floor(ξ[k] / 2)
+        ξ[j] = half_ξ_k
+        ξ[k] -= half_ξ_k
+        R_k_cubed = γ_tilde * R[j]^3 + R[k]^3
+        R[j] = R[k] = R_k_cubed^(1/3)
         X[k] = X[j] = 4/3 * π * R[k]^3
-    elseif ξ[j] - ξ[k] < 0
-        print("nooooo")
+    else
+        println("nooooo")
     end
-    # return ξ,R,X
 end
+
+
 
 
 function split_highest_multiplicity!(ξ,R,X)
@@ -361,8 +619,8 @@ end
 
 ######### OLD DROPLETS structure
 
-# function coalescence_timestep!(droplets,Ns,Δt,ΔV;kernel=golovin)
-#     I =shuffle(1:Ns)
+# function coalescence_timestep!(droplets,Ns,Δt,ΔV )
+#     shuffle!(I)
 #     L= [(I[l-1],I[l]) for l=2:2:length(I)]
 #     scale = Ns*(Ns-1)/2/(Ns/2)
 
@@ -447,7 +705,7 @@ end
 
 
 
-# function coalescence_timestep_small_alpha!(droplets,Ns,y,Δt,ΔV;kernel=golovin)#,M)
+# function coalescence_timestep_small_alpha!(droplets,Ns,y,Δt,ΔV )#,M)
 #     I =(sample(1:Ns, (y*2), replace = false))
 #     L= [(I[l-1],I[l]) for l=2:2:length(I)]
 #     scale = Ns*(Ns-1)/2/(y)
