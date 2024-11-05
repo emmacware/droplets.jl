@@ -4,7 +4,7 @@ using Combinatorics
 using Distributions
 using Plots
 using Interpolations
-using StaticArrays, BenchmarkTools
+using BenchmarkTools
 using Droplets
 include("DSDvis.jl")
 include("testfunctions.jl")

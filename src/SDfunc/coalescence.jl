@@ -6,7 +6,6 @@
 using Distributions
 using Combinatorics
 using Random
-using StaticArrays
 export init_ξ_const,init_logarithmic,terminal_v,collision_efficiency,hydrodynamic,golovin,calc_Ps,coalescence_timestep!,all_or_nothing!,coalescence_unittest_graph!
 export Serial, Parallel,Adaptive,none,coag_settings,droplets_allocations
 
