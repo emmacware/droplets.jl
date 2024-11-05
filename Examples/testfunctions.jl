@@ -1,102 +1,79 @@
 using Plots
 
-function coalescence_unittest_graph!(ξ,R,X,Ns,Δt,ΔV;smooth=true,label=true,kernel=golovin,radius_bins_edges=10 .^ range(log10(10*1e-6), log10(5e3*1e-6), length=128))
-    println("Running simulation...")
-    seconds = 0
 
-    plot1 = plot()
-    coal_func_time = 0
-    bins = zeros(length(radius_bins_edges)-1)
 
-    simtime = @elapsed begin
-    while seconds <= 3600
+# function build_box_run(coag_settings::coag_settings{FT}, run_settings::run_settings{FT}) where FT<:AbstractFloat
+#     ξ, R, X = run_settings.init_method(coag_settings)
+#     Ns::Int = coag_settings.Ns
+#     I::Vector{Int} = shuffle(1:Ns)
     
-        if seconds >= 0 && mod(seconds,1200) == 0
-            println("Time: ", seconds, " seconds")
-
-            xx,yy = binning_dsd(X,ξ,radius_bins_edges,seconds,smooth=smooth,scope_init=2)
-            bins = hcat(bins,yy)
-
-            plot1 = plot!(xx,yy,lc=:black,
-                # linetype=:steppost,
-                # linewidth=2,
-                xaxis=:log,xlims=(10,10000), 
-                label = label == true ? "t = "*string(seconds)*" sec" : nothing,legend=:topright,
-                legendtitle = string(kernel)*", "*s"$N_s$=2^"*string(Int(log2(Ns))),guidefontsize=10)
-            title!("Time Evolution of the Mass Density Distribution")
-            xlabel!("Droplet Radius R (μm)")
-            ylabel!("Mass Density Distribution g(lnR)(g/m^3/unit ln R)")
+#     function coag_runtime(randseed::Int,ξ::Vector{Int},R::Vector{FT},X::Vector{FT},
+#         I::Vector{Int},coag_settings::coag_settings{FT},run_settings::run_settings{FT}) where FT<:AbstractFloat
+#         Random.seed!(randseed)
         
-        end
+#         println("Running simulation...")
+#         seconds::FT = 0.0
 
-        time = @elapsed begin
-        ξ,R,X = coalescence_timestep!(ξ,R,X,Ns,Δt,ΔV,kernel=kernel)
-        end # coalescence_timestep function timing
-        coal_func_time += time
-        X = 4/3*π * R.^3
+#         coal_func_time::FT = 0.0
+#         bins::Matrix{FT} = zeros(FT, run_settings.num_bins - 1, 0)
 
-        seconds = seconds + Δt
-    end
-    end # simulation time
-    println("simtime =",simtime)
-    println("coal_func_time =",coal_func_time)
+#         ϕ = Vector{FT}(undef, div(coag_settings.Ns, 2))
+#         simtime::FT = @elapsed begin
+#             while seconds <= run_settings.output_steps[end]
+#                 if seconds in run_settings.output_steps
+#                     println("Time: ", seconds, " seconds")
+#                     xx, yy = run_settings.binning_method(X, ξ,seconds, run_settings)
+#                     bins = hcat(bins, yy)
+#                 end
 
-    return plot1
-end
+#                 ctime::FT = @elapsed begin
+#                     coalescence_timestep!(run_settings.coag_threading, run_settings.scheme, ξ, R, X, I,ϕ,coag_settings)
+#                 end
+#                 coal_func_time += ctime
+#                 seconds += coag_settings.Δt
+#                 # GC.gc()
+#             end
+#         end
+#         println("simtime =", simtime)
+#         println("coal_func_time =", coal_func_time)
 
+#         return bins, coal_func_time
+#     end
+#     return coag_runtime
+# end
 
-
-
-function coalescence_unittest_graph!(droplets,Ns,Δt,ΔV;smooth=true,label=true,
-    kernel=golovin,radius_bins_edges=10 .^ range(log10(10*1e-6), log10(5e3*1e-6), length=128))
+function coag_runtime(randseed::Int,droplets::droplets_allocations,
+    coag_settings::coag_settings{FT},run_settings::run_settings{FT}) where FT<:AbstractFloat
     
+    Random.seed!(randseed)
     println("Running simulation...")
-    seconds = 0
 
-    plot1 = plot()
+    coal_func_time::FT = 0.0
+    bins::Matrix{FT} = zeros(FT, run_settings.num_bins - 1, 4)
+    threading,scheme = run_settings.coag_threading, run_settings.scheme
+    simtime::FT = @elapsed begin
+        for i  in  1:length(run_settings.output_steps)
+            # if i,seconds in enumerate(run_settings.output_steps)
+            
+            if i ==1
+                bins[:,i] = run_settings.binning_method(droplets.X, droplets.ξ,run_settings.output_steps[i],run_settings)
+                println("Time: ", run_settings.output_steps[i], " seconds")
+                continue
+            end
 
-    coal_func_time = 0
-    bins = zeros(length(radius_bins_edges)-1)
-
-    simtime = @elapsed begin
-    while seconds <= 3600
-   
-        
-        if seconds >= 0 && mod(seconds,1200) == 0
-            println("Time: ", seconds, " seconds")
-            # droplets = sort(droplets, by = droplet -> droplet.R)
-
-            xx,yy = binning_dsd(droplets,radius_bins_edges,seconds,smooth=smooth,scope_init=2)
-            bins = hcat(bins,yy)
-
-                plot1 = plot!(xx,yy,lc=:black,
-                    # linetype=:steppost,
-                    # linewidth=2,
-                    xaxis=:log,xlims=(10,10000), 
-                    label = label == true ? "t = "*string(seconds)*" sec" : nothing,legend=:topright,
-                    legendtitle = string(kernel)*", "*s"$N_s$=2^"*string(Int(log2(Ns))),guidefontsize=10)
-
-                title!("Time Evolution of the Mass Density Distribution")
-                xlabel!("Droplet Radius R (μm)")
-                ylabel!("Mass Density Distribution g(lnR)(g/m^3/unit ln R)")
-
-                plot!(plot1)
+            timestepper = (run_settings.output_steps[i]-run_settings.output_steps[i-1])/coag_settings.Δt
+            ctime::FT = @elapsed begin
+                for _ in 1:timestepper
+                    coalescence_timestep!(threading,scheme,droplets,coag_settings)
+                end
+            end
+            coal_func_time += ctime
+            bins[:,i] = mass_density_lnr(X, ξ,run_settings.output_steps[i],run_settings)
+            println("Time: ", run_settings.output_steps[i], " seconds")
         end
-
-        time = @elapsed begin
-        droplets = coalescence_timestep!(droplets,Ns,Δt,ΔV,kernel=kernel)
-        # println("Time: ", seconds)
-        end # coalescence_timestep function timing
-        coal_func_time += time
-
-
-        seconds = seconds + Δt
     end
-    end # simulation time
-    println("simtime =",simtime)
-    println("coal_func_time =",coal_func_time)
+    println("simtime =", simtime)
+    println("coal_func_time =", coal_func_time)
 
-    bins = bins[:,2:end]
-
-    return plot1
+    return bins, coal_func_time
 end

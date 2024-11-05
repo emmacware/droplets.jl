@@ -8,7 +8,7 @@ using Combinatorics
 using Random
 using StaticArrays
 export init_ξ_const,init_logarithmic,terminal_v,collision_efficiency,hydrodynamic,golovin,calc_Ps,coalescence_timestep!,all_or_nothing!,coalescence_unittest_graph!
-export Serial, Parallel,Adaptive,none,coag_settings
+export Serial, Parallel,Adaptive,none,coag_settings,droplets_allocations
 
 
 struct Serial end
@@ -28,6 +28,15 @@ Base.@kwdef struct coag_settings{FT<:AbstractFloat}
     kernel::Function = golovin # golovin, hydrodynamic
     n0::FT = FT(2^23) # initial droplet concentration
     R0::FT = FT(30.531e-6) # initial radius
+end
+
+struct droplets_allocations{FT<:AbstractFloat}
+    ξ::Vector{Int}
+    R::Vector{FT}
+    X::Vector{FT}
+    I::Vector{Int}
+    pαdt::Vector{FT}
+    ϕ::Vector{FT}
 end
 
 #functions:
@@ -90,15 +99,7 @@ function init_ξ_const(settings::coag_settings{FT}) where FT<:AbstractFloat
 end
 
 
-# function init_ξ_const(Ns,ΔV,n0,R0,M0)
-#     ξstart = n0*ΔV/Ns*ones(Float64,Ns)
-#     # R0 = Float64(30.531e-6) # meters
-#     X0 = Float64(4*π/3*R0^3) # initial volume m3
-#     Xstart = rand(Exponential(X0), Ns)
-#     Rstart = (3 .*Xstart./(4*π)).^(1/3)
-#     Mstart = rand(Exponential(M0), Ns)
-#     return ξstart, Rstart, Xstart,Mstart
-# end
+
 
 
 function init_logarithmic(settings::coag_settings{FT})where FT<:AbstractFloat
@@ -261,17 +262,12 @@ end
 # structures and one for two radius values -- it takes dummy volumes so 
 # that the call could be generalized in the coalescence_timestep function
 
-function hydrodynamic(droplet1,droplet2,settings::coag_settings{FT})::FT where FT<:AbstractFloat
-    E = collision_efficiency(droplet1.R,droplet2.R)
-    Rsum = (droplet1.R+droplet2.R) # sum of radius is in meters
-    vdif = abs(terminal_v(droplet1.R)-terminal_v(droplet2.R))
-    return E*π*Rsum^2*vdif
-end
 
-function hydrodynamic(R,X,j,k,settings::coag_settings{FT})::FT where FT<:AbstractFloat
-    E = collision_efficiency(R[j],R[k])
-    Rsum = (R[j]+R[k]) # sum of radius is in meters
-    vdif = abs(terminal_v(R[j])-terminal_v(R[k]))
+@inline function hydrodynamic(droplets::droplets_allocations, (j,k)::Tuple{Int,Int}, settings::coag_settings{FT})::FT where FT<:AbstractFloat
+    Rj, Rk = droplets.R[j], droplets.R[k]
+    E = collision_efficiency(Rj,Rk)
+    Rsum = (Rj+Rk) # sum of radius is in meters
+    vdif = abs(terminal_v(Rj)-terminal_v(Rk))
     return E *π * Rsum^2 *vdif
 end
 
@@ -283,27 +279,10 @@ end
 # structures and one for two volume values -- it takes dummy radius values so 
 # that the call could be generalized in the coalescence_timestep function
 
-# function golovin(droplet1,droplet2,coag_settings)
-#     b = 1.5e3 # seconds^-1
-#     Xsum = droplet1.X+droplet2.X # m3
-#     return b*Xsum
-# end
 
-# function golovin(R,X,j,k,settings::coag_settings{FT})where FT<:AbstractFloat
-#     # b = 1.5e3 # seconds^-1
-#     Xsum = X[j]+X[k] # m3
-#     return settings.golovin_kernel_coeff*Xsum
-# end
 
-# @inline function golovin(R::Vector{FT}, X::Vector{FT}, j::Int, k::Int, settings::coag_settings{FT})::FT where FT<:AbstractFloat
-#     Xsum = X[j] + X[k] # m3
-#     return settings.golovin_kernel_coeff * Xsum
-# end
-
-@inline function golovin(X::Vector{FT}, (j,k)::Tuple{Int,Int}, settings::coag_settings{FT})::FT where FT<:AbstractFloat
-    # Xsum::FT = X[j] + X[k] # m3
-    return settings.golovin_kernel_coeff *(X[j] + X[k])# Xsum
-    # return FT(1500)*Xsum
+@inline function golovin(droplets::droplets_allocations, (j,k)::Tuple{Int,Int}, settings::coag_settings{FT})::FT where FT<:AbstractFloat
+    return settings.golovin_kernel_coeff *(droplets.X[j] + droplets.X[k])# Xsum
 end
 
 #---------------------------------------------------------
@@ -316,59 +295,23 @@ end
 #free radius, volume, and multiplicity values
 
 
-function calc_Ps(droplet1,droplet2,Δt,ΔV,settings::coag_settings{FT} )::FT where FT<:AbstractFloat
-    Pjk = settings.kernel(droplet1,droplet2,settings)*Δt/ΔV
-    Ps = max(droplet1.ξ,droplet2.ξ)*Pjk 
-    return Ps
-end
 
-# function calc_Ps(R,X,ξ,j,k,settings::coag_settings{FT} )where FT<:AbstractFloat
-#     return max(ξ[j],ξ[k])*settings.kernel(R,X,j,k,settings)*settings.Δt/settings.ΔV
-# end
-
-function calc_Ps(R::Vector{FT}, X::Vector{FT}, ξ::Vector{Int}, j::Int, k::Int, settings::coag_settings{FT})::FT where FT<:AbstractFloat
-    return max(ξ[j], ξ[k]) * settings.kernel(R, X, j, k, settings) * settings.Δt / settings.ΔV
-end
-
-
-# function pair_Ps_adaptive(pair,ξ,R,X,settings::coag_settings{FT})where FT<:AbstractFloat
-#     ξj = max(ξ[pair[1]],ξ[pair[2]])
-#     ξk = min(ξ[pair[1]],ξ[pair[2]])
-#     # if ξk==0
-#     #     println("oop")
-#     # end
-#     pαdt = ξj*settings.kernel(R,X,pair[1],pair[2],settings)*settings.scale/settings.ΔV
-#     Δtmax = (div(ξj,ξk))/pαdt #div gets the floor 
-#     return pαdt,Δtmax
-# end
-
-function pair_Ps_adaptive(pair::Tuple{Int,Int}, ξ::Vector{Int}, X::Vector{FT}, settings::coag_settings{FT})::Tuple{FT,FT} where FT<:AbstractFloat
-    ξk::FT, ξj::FT = if ξ[pair[1]] < ξ[pair[2]]
-        ξ[pair[1]], ξ[pair[2]]
+function pair_Ps_adaptive!(α::Int,pair::Tuple{Int,Int}, droplets::droplets_allocations, t_max,kernel::Function,settings::coag_settings{FT}) where FT<:AbstractFloat
+    if droplets.ξ[pair[1]] < droplets.ξ[pair[2]]
+        k = pair[1]
+        j = pair[2]
     else
-        ξ[pair[2]], ξ[pair[1]]
+        k = pair[2]
+        j = pair[1]
     end
-    # # ξj::FT = max(ξ[pair[1]], ξ[pair[2]])
-    # ξk::FT = min(ξ[pair[1]], ξ[pair[2]])
-    
-    pαdt::FT = ξj * settings.kernel(X, pair, settings) * settings.scale / settings.ΔV
-    Δtmax::FT = (div(ξj, ξk)) / pαdt # div gets the floor 
-    
-    return pαdt, Δtmax
+
+    ξj, ξk = droplets.ξ[j], droplets.ξ[k]
+
+    tmp = ξj * kernel(droplets, pair, settings) * settings.scale / settings.ΔV
+    droplets.pαdt[α] = tmp
+    t_max[α] = (div(ξj, ξk)) / tmp # div gets the floor 
+
 end
-
-
-# function pair_Ps(pair::Tuple{Int,Int}, ξ::Vector{Int}, R::Vector{FT}, X::Vector{FT}, settings::coag_settings{FT})::FT where FT<:AbstractFloat
-#     return max(ξ[pair[1]], ξ[pair[2]]) * settings.kernel(R, X, pair[1], pair[2], settings)
-# end
-
-# @inline function pair_Ps((j,k)::Tuple{Int,Int}, ξ::Vector{Int}, R::Vector{FT}, X::Vector{FT}, settings::coag_settings{FT})::FT where FT<:AbstractFloat
-#     return max(ξ[j], ξ[k]) * settings.kernel(R, X, j, k, settings)
-# end
-@inline function pair_Ps((j,k)::Tuple{Int,Int}, ξ::Vector{Int}, X::Vector{FT}, settings::coag_settings{FT})::FT where FT<:AbstractFloat
-    return max(ξ[j], ξ[k]) * settings.kernel(X,(j,k), settings)
-end
-
 
 #----------------------------------------------------------
 # COALESCENCE
@@ -383,198 +326,170 @@ end
 #currently all can be parallelized on CPUs with Threads.@threads
 
 
-
-
-# @inline function compute_pαdt(L::Vector{Tuple{Int,Int}}, ξ::Vector{Int}, R::Vector{FT}, X::Vector{FT}, coagsettings::coag_settings{FT})::Vector{FT} where FT<:AbstractFloat
-#     return map(pair -> pair_Ps(pair, ξ, R, X, coagsettings), L) .* coagsettings.scale * coagsettings.Δt / coagsettings.ΔV
-# end
-@inline function compute_pαdt(L::Vector{Tuple{Int,Int}}, ξ::Vector{Int}, X::Vector{FT}, coagsettings::coag_settings{FT})::Vector{FT} where FT<:AbstractFloat
-    return map(pair -> pair_Ps(pair, ξ, X, coagsettings), L) .* coagsettings.scale * coagsettings.Δt / coagsettings.ΔV
+@inline function compute_pαdt!(L::Vector{Tuple{Int,Int}}, droplets::droplets_allocations, kernel::Function,coagsettings::coag_settings{FT}) where FT<:AbstractFloat
+    map(i -> pair_Ps!(i, L[i], droplets, kernel, coagsettings), eachindex(droplets.pαdt))
+    droplets.pαdt .*=  coagsettings.scale * coagsettings.Δt / coagsettings.ΔV
 end
 
-# #####
-function coalescence_timestep!(run::Serial,scheme::none, ξ::Vector{Int}, R::Vector{FT}, 
-    X::Vector{FT}, I::Vector{Int},ϕ::Vector{FT},
+@inline function pair_Ps!(α::Int, (j,k)::Tuple{Int,Int}, droplets::droplets_allocations, kernel::Function,coagsettings::coag_settings{FT}) where FT<:AbstractFloat
+    droplets.pαdt[α] = max(droplets.ξ[j], droplets.ξ[k]) * kernel(droplets,(j,k), coagsettings)
+end
+
+function coalescence_timestep!(run::Serial,scheme::none, droplets::droplets_allocations,
     settings::coag_settings{FT}) where FT<:AbstractFloat
     Ns::Int = settings.Ns
     
-    shuffle!(I)
-    L::Vector{Tuple{Int, Int}} = [(I[l-1], I[l]) for l in 2:2:Ns]
+    shuffle!(droplets.I)
+    L = [(droplets.I[l-1], droplets.I[l]) for l in 2:2:Ns]
 
-    # pαdt = map(pair -> pair_Ps(pair,ξ,R,X,settings),L).*settings.scale*settings.Δt/settings.ΔV
-    pαdt = compute_pαdt(L, ξ, X, settings)
-    rand!(ϕ)
-    # ϕ = rand(FT, div(settings.Ns, 2))
+    compute_pαdt!(L, droplets,settings.kernel, settings)
 
-    # for (α, pair) in enumerate(L)
+    rand!(droplets.ϕ)
+
     for α::Int in 1:div(Ns, 2)
         
-        if ϕ[α] >= pαdt[α]
+        if droplets.ϕ[α] >= droplets.pαdt[α]
             continue
         end
-        sdm_update!(L[α],ξ,R,X,ϕ[α], pαdt[α])
+        sdm_update!(L[α], α, droplets)
+
     end
+
 
 end 
 
-function construct_L(I::Vector{Int}, Ns::Int)::Vector{Tuple{Int, Int}}
-    L = Vector{Tuple{Int, Int}}(undef, div(Ns, 2))
-    shuffle!(I)
-    Threads.@threads for l in 2:2:Ns
-        L[div(l, 2)] = (I[l-1], I[l])
-    end
-    return L
-end
 
-function coalescence_timestep!(run::Parallel, scheme::none,ξ::Vector{Int}, R::Vector{FT}, 
-    X::Vector{FT}, I::Vector{Int},ϕ::Vector{FT},
+function coalescence_timestep!(run::Parallel, scheme::none,droplets::droplets_allocations,
     settings::coag_settings{FT}) where FT<:AbstractFloat
 
     Ns = settings.Ns
-    L = construct_L(I, Ns)
+    # this is quicker outside of the parallelization....
+    # probably can change???
+    L = [(droplets.I[l-1], droplets.I[l]) for l in 2:2:Ns]
+    compute_pαdt!(L, droplets,settings.kernel, settings)(L, droplets,settings.kernel, settings)
+    rand!(droplets.ϕ)
 
     Threads.@threads for α in 1:div(Ns, 2)
-        pαdt = pair_Ps(L[α], ξ, X, settings) * settings.scale * settings.Δt / settings.ΔV
-        ϕ[α] = rand(FT)
-        # rand!(ϕ)
-        if ϕ[α] >= pαdt
+        if droplets.ϕ[α] >= droplets.pαdt[α]
             continue
         end
-        sdm_update!(L[α], ξ, R, X, ϕ[α], pαdt)
+        sdm_update!(L[α], α, droplets)
     end
+    return nothing
 end
 
-function adaptive_pαdt(L::Vector{Tuple{Int,Int}}, ξ::Vector{Int}, X::Vector{FT},t_left::FT, settings::coag_settings{FT}) where FT<:AbstractFloat
-    deficit_opt = map(pair -> pair_Ps_adaptive(pair,ξ,X,settings),L)
-    Δtm = minimum([last(pair) for pair in deficit_opt])
-    Δt = min(Δtm,t_left)
-    pαdt = [first(pair) for pair in deficit_opt].*Δt
-    return pαdt, Δt
+
+function adaptive_pαdt!(L::Vector{Tuple{Int,Int}},droplets::droplets_allocations,t_left::Ref{FT},kernel::Function, settings::coag_settings{FT}) where FT<:AbstractFloat
+    t_max = Vector{FT}(undef, length(L))
+    map(α -> pair_Ps_adaptive!(α,L[α],droplets,t_max,kernel,settings),eachindex(droplets.pαdt))
+    Δtm = minimum(t_max)
+    Δt = min(Δtm,t_left[])
+    droplets.pαdt .*= Δt
+    t_left[] -= Δt
+    return nothing
 end
 
-function adaptive_pαdt_parallel(L::Vector{Tuple{Int,Int}}, ξ::Vector{Int}, X::Vector{FT},t_left::FT, settings::coag_settings{FT}) where FT<:AbstractFloat
-    pd = Vector{FT}(undef, length(L))
-    tm = Vector{FT}(undef, length(L))
-    Threads.@threads for α in 1:length(L)
-        pd[α],tm[α] = pair_Ps_adaptive(L[α],ξ,X,settings)
-    end
-    Δtm = minimum(tm)
-    Δt = min(Δtm,t_left)
-    pαdt = pd.*Δt
-    return pαdt, Δt
-end
 
-# #####
-function coalescence_timestep!(run::Serial,scheme::Adaptive,ξ::Vector{Int}, R::Vector{FT}, 
-    X::Vector{FT}, I::Vector{Int},ϕ::Vector{FT},
+function coalescence_timestep!(run::Serial,scheme::Adaptive,droplets::droplets_allocations{FT},
     settings::coag_settings{FT}) where FT<:AbstractFloat
     Ns = settings.Ns
-    t_left = settings.Δt #+ 0
+    t_left = Ref(settings.Δt)
 
-    while t_left > 0
-        shuffle!(I)
-        L::Vector{Tuple{Int, Int}} = [(I[l-1], I[l]) for l in 2:2:Ns]
+    while t_left[] > 0
+        shuffle!(droplets.I)
+        L = [(droplets.I[l-1], droplets.I[l]) for l in 2:2:Ns]
+        rand!(droplets.ϕ)
 
-        rand!(ϕ)
-        # deficit_opt = map(pair -> pair_Ps_adaptive(pair,ξ,X,settings),L)
-        # Δtm = minimum([last(pair) for pair in deficit_opt])
-        # Δt = min(Δtm,t_left)
-        # pαdt = [first(pair) for pair in deficit_opt].*Δt
-        pαdt, Δt = adaptive_pαdt(L, ξ, X, t_left ,settings)
+        adaptive_pαdt!(L,droplets,t_left,settings.kernel,settings)
         
-        # for (α, pair) in enumerate(L)
-            
-        #     if ϕ[α] >= pαdt[α]
-        #         continue
-        #     end
-        #     sdm_update!(pair,ξ,R,X,ϕ[α], pαdt[α])
-        # end
-
         for α::Int in 1:div(Ns, 2)
         
-            if ϕ[α] >= pαdt[α]
+            if droplets.ϕ[α] >= droplets.pαdt[α]
                 continue
             end
-            sdm_update!(L[α],ξ,R,X,ϕ[α], pαdt[α])
+            sdm_update!(L[α], α, droplets)
+    
         end
 
         #this takes a lot of searching.. could we put the failure condition somewhere else?
-        if minimum(ξ) <= 0
-            split_highest_multiplicity!(ξ,R,X)
+        if minimum(droplets.ξ) <= 0
+            println("still happening")
+            split_highest_multiplicity!(droplets.ξ,droplets.R,droplets.X)
         end
-
-        t_left -= Δt
     end
+    return nothing
 end 
 
-#still dev
-# function coalescence_timestep!(run::Parallel,scheme::Adaptive,ξ::Vector{Int}, R::Vector{FT}, 
-#     X::Vector{FT}, I::Vector{Int},ϕ::Vector{FT},
-#     settings::coag_settings{FT}) where FT<:AbstractFloat
+function coalescence_timestep!(run::Parallel,scheme::Adaptive,droplets::droplets_allocations{FT},
+    settings::coag_settings{FT}) where FT<:AbstractFloat
+    Ns = settings.Ns
+    t_left = Ref(settings.Δt)
 
-#     Ns = settings.Ns
-#     t_left = settings.Δt
+    while t_left[] > 0
+        shuffle!(droplets.I)
+        L = [(droplets.I[l-1], droplets.I[l]) for l in 2:2:Ns]
+        rand!(droplets.ϕ)
 
-#     while t_left > 0
-#         L = construct_L(I, Ns)
-
-#         # ϕ = rand(div(Ns, 2))
-
-#         pαdt,Δt = adaptive_pαdt_parallel(L, ξ, X, t_left, settings)
+        #surely there is a way to parallelize this
+        adaptive_pαdt!(L,droplets,t_left,settings.kernel,settings)
         
-#         Threads.@threads for α=1:Int(floor(Ns/2))
-            
-#             if ϕ[α] >= pαdt[α]
-#                 continue
-#             end
-#             sdm_update!(L[α],ξ,R,X,ϕ[α], pαdt[α])
-#         end
+        Threads.@threads for α in 1:div(Ns, 2)
+            if droplets.ϕ[α] >= droplets.pαdt[α]
+                continue
+            end
+            sdm_update!(L[α], α, droplets)
+        end
 
-#         #this takes a lot of searching.. could we put the failure condition somewhere else?
-#         if minimum(ξ) <= 0
-#             split_highest_multiplicity!(ξ,R,X)
-#         end
-
-#         t_left -= Δt
-#     end
-# end 
-
+        #this takes a lot of searching.. could we put the failure condition somewhere else?
+        if minimum(droplets.ξ) <= 0
+            println("still happening")
+            split_highest_multiplicity!(droplets.ξ,droplets.R,droplets.X)
+        end
+    end
+    return nothing
+end 
 
 
-function sdm_update!(pair::Tuple{Int,Int}, ξ::Vector{Int}, R::Vector{FT}, X::Vector{FT}, ϕ::FT, pα::FT) where FT<:AbstractFloat
-        k, j = if ξ[pair[1]] < ξ[pair[2]]
-        pair[1], pair[2]
+function sdm_update!(pair::Tuple{Int,Int},α::Int, droplets::droplets_allocations{FT}) where FT<:AbstractFloat
+
+    if droplets.ξ[pair[1]] < droplets.ξ[pair[2]]
+        k = pair[1]
+        j = pair[2]
     else
-        pair[2], pair[1]
+        k = pair[2]
+        j = pair[1]
     end
 
-    pα_floor::FT = floor(pα)
-    γ::FT = if ϕ < pα - pα_floor
+    ξj, ξk = droplets.ξ[j], droplets.ξ[k]
+    pα =  droplets.pαdt[α]
+
+    pα_floor::FT = @fastmath floor(pα)
+    γ::FT  = if droplets.ϕ[α] < pα - pα_floor
         pα_floor + 1
     else
         pα_floor
     end
 
-    γ_tilde::FT = min(γ, floor(ξ[j] / ξ[k]))
-    ξ_j_minus_γ_tilde_ξ_k = ξ[j] - γ_tilde * ξ[k]
+    γ  = min(γ , floor(ξj / ξk))
+    ξ_j_minus_γ_tilde_ξ_k = ξj - γ  * ξk
 
     if ξ_j_minus_γ_tilde_ξ_k > 0
-        ξ[j] = ξ_j_minus_γ_tilde_ξ_k
-        R_k_cubed = γ_tilde * R[j]^3 + R[k]^3
-        R[k] = R_k_cubed^(1/3)
-        X[k] = 4/3 * π * R[k]^3
+        droplets.ξ[j] = ξ_j_minus_γ_tilde_ξ_k
+        R_k_cubed = γ * droplets.R[j]^3 + droplets.R[k]^3
+        droplets.R[k] = R_k_cubed^(1/3)
+        droplets.X[k] = 4/3 * π * R_k_cubed
     elseif ξ_j_minus_γ_tilde_ξ_k == 0
-        half_ξ_k = floor(ξ[k] / 2)
-        ξ[j] = half_ξ_k
-        ξ[k] -= half_ξ_k
-        R_k_cubed = γ_tilde * R[j]^3 + R[k]^3
-        R[j] = R[k] = R_k_cubed^(1/3)
-        X[k] = X[j] = 4/3 * π * R[k]^3
+        half_ξ_k = floor(ξk / 2)
+        droplets.ξ[j] = half_ξ_k
+        droplets.ξ[k] -= half_ξ_k
+        R_k_cubed = γ* droplets.R[j]^3 + droplets.R[k]^3
+        droplets.R[j] = droplets.R[k] = R_k_cubed^(1/3)
+        droplets.X[k] = droplets.X[j] = 4/3 * π * R_k_cubed
     else
         println("nooooo")
     end
+    return nothing
 end
-
 
 
 
@@ -606,187 +521,9 @@ function split_highest_multiplicity!(ξ,R,X)
         # deleteat!(ξ,argmin(ξ))
         # # Ns=Ns-1
     end
+    return nothing
 end
 
 
-
-
-
-
-
-
-
-
-######### OLD DROPLETS structure
-
-# function coalescence_timestep!(droplets,Ns,Δt,ΔV )
-#     shuffle!(I)
-#     L= [(I[l-1],I[l]) for l=2:2:length(I)]
-#     scale = Ns*(Ns-1)/2/(Ns/2)
-
-#     Threads.@threads for α=1:Int(floor(Ns/2))
-#     # for α in 1:Ns/2
-
-#         jj=L[α][1] #struggled with choosing j>k so its hard coded
-#         kk=L[α][2]
-
-#         if droplets[jj].ξ<droplets[kk].ξ
-#             k=jj
-#             j=kk
-#         else
-#             j=jj
-#             k=kk
-#         end			
-
-#         ϕ = rand()
-#         pα = scale*calc_Ps(droplets[j],droplets[k],Δt,ΔV,kernel=kernel)
-
-
-#         if ϕ < pα - floor(pα)
-#             γ = floor(pα)+1
-#         elseif ϕ >= pα - floor(pα)
-#             γ = floor(pα)
-#         end
-
-#         if γ == 0
-#             continue
-#         end
-
-#         γ_tilde = min(γ,floor(droplets[j].ξ/droplets[k].ξ))
-#         # if γ_tilde == floor(ξ[j]/ξ[k])
-#         #     println("limit exceeded")
-#         # end
-
-#         if droplets[j].ξ - γ_tilde*droplets[k].ξ > 0
-#             droplets[j].ξ = droplets[j].ξ-γ_tilde*droplets[k].ξ
-#             droplets[k].R = (γ_tilde*droplets[j].R^3+droplets[k].R^3)^(1/3)
-#             droplets[k].X = 4/3*π * droplets[k].R^3
-#             droplets[k].M = γ_tilde*droplets[j].M+droplets[k].M
-
-#         elseif droplets[j].ξ - γ_tilde*droplets[k].ξ == 0
-#             droplets[j].ξ = floor(droplets[k].ξ/2)
-#             droplets[k].ξ = droplets[k].ξ - floor(droplets[k].ξ/2)
-#             droplets[j].R = droplets[k].R = (γ_tilde*droplets[j].R^3+droplets[k].R^3)^(1/3)
-#             droplets[j].X = droplets[k].X = 4/3*π * droplets[j].R^3
-#             droplets[j].M = droplets[k].M = γ_tilde*droplets[j].M+droplets[k].M
-#         elseif droplets[j].ξ - droplets[k].ξ < 0
-#             print("nooooo")
-#         end 
-#     end
-
-#     #this takes a lot of searching.. could we put the failure condition somewhere else/
-#     # min_ξ = findmin(droplet -> droplet.ξ, droplets)
-#     # max_ξ = findmax(droplet -> droplet.ξ, droplets)
-#     # 
-#     # if (min_ξ[1] <= 0 && max_ξ[1] > 1)
-#     #     while (min_ξ[1] <= 0 && max_ξ[1] > 1)
-#     #         # println("Superdroplet ", argmin(ξ), " has multiplicity of ", ξ[argmin(ξ)])
-#     #         # Split superdroplet with highest multiplicity, half goes to argmin(ξ) and half stays
-#     #         # Idea from Dziekan and Pawlowska (ACP, 2017) https://doi.org/10.5194/acp-17-13509-2017
-#     #         min_ξ = findmin(droplet -> droplet.ξ, droplets)
-#     #         max_ξ = findmax(droplet -> droplet.ξ, droplets)
-            
-#     #         argmin_i = min_ξ[2]
-#     #         argmax_i = max_ξ[2]
-#     #         droplets[argmin_i].ξ = floor(max_ξ[1]/2)
-#     #         droplets[argmin_i].R = droplets[argmax_i].R
-#     #         droplets[argmin_i].X = droplets[argmax_i].X
-#     #         droplets[argmin_i].M = droplets[argmax_i].M
-#     #         droplets[argmax_i].ξ = floor(max_ξ[1]/2)
-#     #     end
-#     # elseif (min_ξ[1] <= 0 && max_ξ[1] <= 1)
-#     #     # Cannot split highest multiplicity superdroplet, have to remove superdroplet from system
-#     #     println("Superdroplet ", min_ξ[2], " has multiplicity of ", min_ξ[1], ", removing from system")
-#     #     deleteat!(droplets,droplets[min_ξ[2]])
-#     #     Ns=Ns-1 #do I need to return this??
-#     # end
-# return droplets
-# end
-
-
-
-# function coalescence_timestep_small_alpha!(droplets,Ns,y,Δt,ΔV )#,M)
-#     I =(sample(1:Ns, (y*2), replace = false))
-#     L= [(I[l-1],I[l]) for l=2:2:length(I)]
-#     scale = Ns*(Ns-1)/2/(y)
-
-
-#     Threads.@threads for α=1:y
-#     # for α in 1:y
-
-#         jj=L[α][1] #struggled with choosing j>k so its hard coded
-#         kk=L[α][2]
-
-#         if droplets[jj].ξ<droplets[kk].ξ
-#             k=jj
-#             j=kk
-#         else
-#             j=jj
-#             k=kk
-#         end			
-
-#         ϕ = rand()
-#         pα = scale*calc_Ps(droplets[j],droplets[k],Δt,ΔV,kernel=kernel)
-
-
-#         if ϕ < pα - floor(pα)
-#             γ = floor(pα)+1
-#         elseif ϕ >= pα - floor(pα)
-#             γ = floor(pα)
-#         end
-
-#         if γ == 0
-#             continue
-#         end
-
-#         γ_tilde = min(γ,floor(droplets[j].ξ/droplets[k].ξ))
-#         # if γ_tilde == floor(ξ[j]/ξ[k])
-#         #     println("limit exceeded")
-#         # end
-
-#         if droplets[j].ξ - γ_tilde*droplets[k].ξ > 0
-#             droplets[j].ξ = droplets[j].ξ-γ_tilde*droplets[k].ξ
-#             droplets[k].R = (γ_tilde*droplets[j].R^3+droplets[k].R^3)^(1/3)
-#             droplets[k].X = 4/3*π * droplets[k].R^3
-#             droplets[k].M = γ_tilde*droplets[j].M+droplets[k].M
-
-#         elseif droplets[j].ξ - γ_tilde*droplets[k].ξ == 0
-#             droplets[j].ξ = floor(droplets[k].ξ/2)
-#             droplets[k].ξ = droplets[k].ξ - floor(droplets[k].ξ/2)
-#             droplets[j].R = droplets[k].R = (γ_tilde*droplets[j].R^3+droplets[k].R^3)^(1/3)
-#             droplets[j].X = droplets[k].X = 4/3*π * droplets[j].R^3
-#             droplets[j].M = droplets[k].M = γ_tilde*droplets[j].M+droplets[k].M
-#         elseif droplets[j].ξ - droplets[k].ξ < 0
-#             print("nooooo")
-#         end 
-#     end
-#         #this takes a lot of searching.. could we put the failure condition somewhere else/
-#         # min_ξ = findmin(droplet -> droplet.ξ, droplets)
-#         # max_ξ = findmax(droplet -> droplet.ξ, droplets)
-        
-#         # if (min_ξ[1] <= 0 && max_ξ[1] > 1)
-#         #     while (min_ξ[1] <= 0 && max_ξ[1] > 1)
-#         #         # println("Superdroplet ", argmin(ξ), " has multiplicity of ", ξ[argmin(ξ)])
-#         #         # Split superdroplet with highest multiplicity, half goes to argmin(ξ) and half stays
-#         #         # Idea from Dziekan and Pawlowska (ACP, 2017) https://doi.org/10.5194/acp-17-13509-2017
-#         #         min_ξ = findmin(droplet -> droplet.ξ, droplets)
-#         #         max_ξ = findmax(droplet -> droplet.ξ, droplets)
-                
-#         #         argmin_i = min_ξ[2]
-#         #         argmax_i = max_ξ[2]
-#         #         droplets[argmin_i].ξ = floor(max_ξ[1]/2)
-#         #         droplets[argmin_i].R = droplets[argmax_i].R
-#         #         droplets[argmin_i].X = droplets[argmax_i].X
-#         #         droplets[argmin_i].M = droplets[argmax_i].M
-#         #         droplets[argmax_i].ξ = floor(max_ξ[1]/2)
-#         #     end
-#         # elseif (min_ξ[1] <= 0 && max_ξ[1] <= 1)
-#         #     # Cannot split highest multiplicity superdroplet, have to remove superdroplet from system
-#         #     println("Superdroplet ", min_ξ[2], " has multiplicity of ", min_ξ[1], ", removing from system")
-#         #     deleteat!(droplets,droplets[min_ξ[2]])
-#         #     Ns=Ns-1 #do I need to return this??
-#         # end
-# return droplets
-# end
 
 
