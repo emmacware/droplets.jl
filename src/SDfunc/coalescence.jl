@@ -6,7 +6,7 @@
 using Distributions
 using Combinatorics
 using Random
-export init_ξ_const,init_logarithmic,terminal_v,collision_efficiency,hydrodynamic,golovin,calc_Ps,coalescence_timestep!,all_or_nothing!,coalescence_unittest_graph!
+export init_ξ_const,init_logarithmic,init_uniform_sd,terminal_v,collision_efficiency,hydrodynamic,golovin,calc_Ps,coalescence_timestep!,all_or_nothing!,coalescence_unittest_graph!
 export Serial, Parallel,Adaptive,none,coag_settings,droplets_allocations
 
 
@@ -364,8 +364,9 @@ function coalescence_timestep!(run::Parallel, scheme::none,droplets::droplets_al
     Ns = settings.Ns
     # this is quicker outside of the parallelization....
     # probably can change???
+    shuffle!(droplets.I)
     L = [(droplets.I[l-1], droplets.I[l]) for l in 2:2:Ns]
-    compute_pαdt!(L, droplets,settings.kernel, settings)(L, droplets,settings.kernel, settings)
+    compute_pαdt!(L, droplets,settings.kernel, settings)
     rand!(droplets.ϕ)
 
     Threads.@threads for α in 1:div(Ns, 2)
