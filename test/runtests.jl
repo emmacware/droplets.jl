@@ -2,5 +2,10 @@ using Droplets
 using Test
 
 @testset "Droplets.jl" begin
-    # Write your tests here.
+    # Arrange
+    
+    # Act
+
+    # Assert
+    Test.@test false
 end
