@@ -51,7 +51,7 @@ function coag_runtime(randseed::Int,droplets::droplets_allocations,
     coal_func_time::FT = 0.0
     bins::Matrix{FT} = zeros(FT, run_settings.num_bins - 1, 4)
     threading,scheme = run_settings.coag_threading, run_settings.scheme
-    simtime::FT = @elapsed begin
+    simtime::FT = @CPUelapsed begin
         for i  in  1:length(run_settings.output_steps)
             # if i,seconds in enumerate(run_settings.output_steps)
             
@@ -62,13 +62,13 @@ function coag_runtime(randseed::Int,droplets::droplets_allocations,
             end
 
             timestepper = (run_settings.output_steps[i]-run_settings.output_steps[i-1])/coag_settings.Δt
-            ctime::FT = @elapsed begin
+            ctime::FT = @CPUelapsed begin
                 for _ in 1:timestepper
                     coalescence_timestep!(threading,scheme,droplets,coag_settings)
                 end
             end
             coal_func_time += ctime
-            bins[:,i] = mass_density_lnr(X, ξ,run_settings.output_steps[i],run_settings)
+            bins[:,i] = mass_density_lnr(droplets.X, droplets.ξ,run_settings.output_steps[i],run_settings)
             println("Time: ", run_settings.output_steps[i], " seconds")
         end
     end
