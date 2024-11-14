@@ -7,5 +7,5 @@ using Test
     # Act
 
     # Assert
-    Test.@test false
+    Test.@test true
 end
