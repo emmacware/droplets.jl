@@ -55,6 +55,40 @@ function coag_runtime(randseed::Int,droplets::droplets_allocations,
         for i  in  1:length(run_settings.output_steps)
             # if i,seconds in enumerate(run_settings.output_steps)
             
+            if i !=1
+                timestepper = (run_settings.output_steps[i]-run_settings.output_steps[i-1])/coag_settings.Δt
+                ctime::FT = @CPUelapsed begin
+                    for _ in 1:timestepper
+                        coalescence_timestep!(threading,scheme,droplets,coag_settings)
+                    end
+                end
+                coal_func_time += ctime
+            end
+            bins[:,i] = run_settings.binning_method(droplets.X, droplets.ξ,run_settings.output_steps[i],run_settings)
+            println("Time: ", run_settings.output_steps[i], " seconds")
+        end
+    end
+    println("simtime =", simtime)
+    println("coal_func_time =", coal_func_time)
+
+    return bins, coal_func_time
+end
+
+
+function coag_runtime_log_deficit(randseed::Int,droplets::deficit_allocations,
+    coag_settings::coag_settings{FT},run_settings::run_settings{FT}) where FT<:AbstractFloat
+    deficit_data = zeros(FT, coag_settings.Ns/2, run_settings.output_steps[end]/coag_settings.Δt)
+    
+    Random.seed!(randseed)
+    println("Running simulation...")
+
+    coal_func_time::FT = 0.0
+    # bins::Matrix{FT} = zeros(FT, run_settings.num_bins - 1, 4)
+    threading,scheme = run_settings.coag_threading, run_settings.scheme
+    simtime::FT = @CPUelapsed begin
+        for i  in  1:length(run_settings.output_steps)
+            # if i,seconds in enumerate(run_settings.output_steps)
+            
             if i ==1
                 bins[:,i] = run_settings.binning_method(droplets.X, droplets.ξ,run_settings.output_steps[i],run_settings)
                 println("Time: ", run_settings.output_steps[i], " seconds")
@@ -64,7 +98,7 @@ function coag_runtime(randseed::Int,droplets::droplets_allocations,
             timestepper = (run_settings.output_steps[i]-run_settings.output_steps[i-1])/coag_settings.Δt
             ctime::FT = @CPUelapsed begin
                 for _ in 1:timestepper
-                    coalescence_timestep!(threading,scheme,droplets,coag_settings)
+                    coalescence_timestep!(threading,log_deficit(),droplets,coag_settings)
                 end
             end
             coal_func_time += ctime
@@ -77,4 +111,3 @@ function coag_runtime(randseed::Int,droplets::droplets_allocations,
 
     return bins, coal_func_time
 end
-
