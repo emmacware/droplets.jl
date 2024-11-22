@@ -49,7 +49,7 @@ function coag_runtime(randseed::Int,droplets::droplets_allocations,
     println("Running simulation...")
 
     coal_func_time::FT = 0.0
-    bins::Matrix{FT} = zeros(FT, run_settings.num_bins - 1, 4)
+    bins::Matrix{FT} = zeros(FT, run_settings.num_bins - 1, length(run_settings.output_steps))
     threading,scheme = run_settings.coag_threading, run_settings.scheme
     simtime::FT = @CPUelapsed begin
         for i  in  1:length(run_settings.output_steps)
@@ -77,3 +77,4 @@ function coag_runtime(randseed::Int,droplets::droplets_allocations,
 
     return bins, coal_func_time
 end
+
