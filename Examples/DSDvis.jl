@@ -436,5 +436,5 @@ function number_density(Xunsorted,ξunsorted,t,settings)
             end
         end
     end
-    return mids, numdens
+    return numdens
 end
