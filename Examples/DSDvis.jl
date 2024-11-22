@@ -284,8 +284,11 @@ end
 
 #binning_dsd function for superdroplets, vector input
 #becuase of what it was used for, time is an input so that it would not smooth at t=0 
-function number_density_dsd(Xunsorted,ξunsorted,bins,t;smooth = true,scope_init = 1)
-    bin_edges = bins
+# function number_density_dsd(Xunsorted,ξunsorted,bins,t;smooth = true,scope_init = 1)
+function number_density_dsd(Xunsorted::Vector{FT}, ξunsorted::Vector{Int}, 
+    t::FT,settings::run_settings{FT}) where FT<:AbstractFloat
+
+    bin_edges = settings.radius_bins_edges
     i = sortperm(Xunsorted)
     X = Xunsorted[i]
     ξ = ξunsorted[i]
