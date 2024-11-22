@@ -7,7 +7,8 @@ using Distributions
 using Combinatorics
 using Random
 export init_ξ_const,init_logarithmic,init_uniform_sd,terminal_v,collision_efficiency,hydrodynamic,golovin,calc_Ps,coalescence_timestep!,all_or_nothing!,coalescence_unittest_graph!
-export Serial, Parallel,Adaptive,none,coag_settings,droplets_allocations
+export Serial, Parallel,Adaptive,none,coag_settings,droplets_allocations,pair_Ps!,sdm_update!
+
 
 
 struct Serial end
