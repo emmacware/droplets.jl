@@ -165,7 +165,7 @@ end
 # end
 
 function mass_density_lnr(Xunsorted::Vector{FT}, ξunsorted::Vector{Int}, 
-    t::FT,settings::run_settings{FT}) where FT<:AbstractFloat
+    t::FT,settings::run_settings{FT},coagsettings::coag_settings{FT}) where FT<:AbstractFloat
     
     bin_edges = settings.radius_bins_edges
     i = sortperm(Xunsorted)
@@ -191,6 +191,9 @@ function mass_density_lnr(Xunsorted::Vector{FT}, ξunsorted::Vector{Int},
         end
     end
 
+    water *= 1e3 # convert to mass
+    water *= 1e3 # convert from kg to grams
+    water /= coagsettings.ΔV 
     scope = settings.smooth_scope
 
     if t != 0 && settings.smooth == true
@@ -286,7 +289,7 @@ end
 #becuase of what it was used for, time is an input so that it would not smooth at t=0 
 # function number_density_dsd(Xunsorted,ξunsorted,bins,t;smooth = true,scope_init = 1)
 function number_density_dsd(Xunsorted::Vector{FT}, ξunsorted::Vector{Int}, 
-    t::FT,settings::run_settings{FT}) where FT<:AbstractFloat
+    t::FT,settings::run_settings{FT},coagsettings::coag_settings{FT}) where FT<:AbstractFloat
 
     bin_edges = settings.radius_bins_edges
     i = sortperm(Xunsorted)
