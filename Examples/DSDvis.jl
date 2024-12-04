@@ -287,120 +287,6 @@ end
 
 #binning_dsd function for superdroplets, vector input
 #becuase of what it was used for, time is an input so that it would not smooth at t=0 
-# function number_density_dsd(Xunsorted,ξunsorted,bins,t;smooth = true,scope_init = 1)
-function number_density_dsd(Xunsorted::Vector{FT}, ξunsorted::Vector{Int}, 
-    t::FT,settings::run_settings{FT},coagsettings::coag_settings{FT}) where FT<:AbstractFloat
-
-    bin_edges = settings.radius_bins_edges
-    i = sortperm(Xunsorted)
-    X = Xunsorted[i]
-    ξ = ξunsorted[i]
-
-    # mids = 0.5*(bin_edges[1:end-1] + bin_edges[2:end])*1e6 #um
-    mids = bin_edges[1:end-1] #m
-
-    numdens = zeros(length(mids))
-    droplet_idx = 1
-    for j in 1:length(mids)
-
-        lo = 4*pi .*((bin_edges[j]) .^ 3) ./3 
-        hi = 4*pi .*((bin_edges[j+1]) .^ 3) ./3
-        leng = (bin_edges[j+1])-(bin_edges[j])
-        for i in droplet_idx:length(X)
-
-            if X[i] < hi
-                numdens[j]=numdens[j]+ξ[i]/leng
-                droplet_idx += 1
-            else
-                break
-            end
-
-        end
-
-    end
-
-    scope = scope_init
-
-    if t != 0 && smooth == true
-        new_numdens = copy(numdens)
-        for j in 1:2
-            # scope = scope_init
-            # println(scope)
-            for i in scope+1:length(numdens)-scope
-                new_numdens[i] = mean(numdens[i-scope:i+scope])
-            end
-            scope = 1
-            # println(scope)
-            for i in scope+1:length(numdens)-scope
-                numdens[i] = mean(new_numdens[i-scope:i+scope])
-            end
-        end
-
-
-    end
-
-    return mids, numdens
-
-end
-
-
-# #binning_dsd function for superdroplets, vector input
-# #becuase of what it was used for, time is an input so that it would not smooth at t=0 
-# function number_density_dsd(Xunsorted,ξunsorted,bins,t;smooth = true,scope_init = 1)
-#     bin_edges = bins
-#     i = sortperm(Xunsorted)
-#     X = Xunsorted[i]
-#     ξ = ξunsorted[i]
-
-#     # mids = 0.5*(bin_edges[1:end-1] + bin_edges[2:end])*1e6 #um
-#     mids = bin_edges[1:end-1] #m
-
-#     numdens = zeros(length(mids))
-#     droplet_idx = 1
-#     for j in 1:length(mids)
-
-#         lo = 4*pi .*((bin_edges[j]) .^ 3) ./3 
-#         hi = 4*pi .*((bin_edges[j+1]) .^ 3) ./3
-#         leng = (bin_edges[j+1])-(bin_edges[j])
-#         for i in droplet_idx:length(X)
-
-#             if X[i] < hi
-#                 numdens[j]=numdens[j]+ξ[i]/leng
-#                 droplet_idx += 1
-#             else
-#                 break
-#             end
-
-#         end
-
-#     end
-
-#     scope = scope_init
-
-#     if t != 0 && smooth == true
-#         new_numdens = copy(numdens)
-#         for j in 1:2
-#             # scope = scope_init
-#             # println(scope)
-#             for i in scope+1:length(numdens)-scope
-#                 new_numdens[i] = mean(numdens[i-scope:i+scope])
-#             end
-#             scope = 1
-#             # println(scope)
-#             for i in scope+1:length(numdens)-scope
-#                 numdens[i] = mean(new_numdens[i-scope:i+scope])
-#             end
-#         end
-
-
-#     end
-
-#     return mids, numdens
-
-# end
-
-#binning_dsd function for superdroplets, vector input
-#becuase of what it was used for, time is an input so that it would not smooth at t=0 
 function number_density(Xunsorted::Vector{FT}, ξunsorted::Vector{Int}, 
     t::FT,settings::run_settings{FT},coagsettings::coag_settings{FT}) where FT<:AbstractFloat
     bin_edges = settings.radius_bins_edges
@@ -414,7 +300,8 @@ function number_density(Xunsorted::Vector{FT}, ξunsorted::Vector{Int},
     for j in 1:length(mids)
         # lo = 4*pi .*((bin_edges[j]) .^ 3) ./3 
         hi = 4*pi .*((bin_edges[j+1]) .^ 3) ./3
-        leng = (bin_edges[j+1])-(bin_edges[j])
+        # leng = (bin_edges[j+1])-(bin_edges[j])
+        leng = log(bin_edges[j+1]) - log(bin_edges[j])
         for i in droplet_idx:length(X)
             if X[i] < hi
                 numdens[j]=numdens[j]+ξ[i]/leng
