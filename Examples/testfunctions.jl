@@ -47,7 +47,7 @@ function coag_runtime(randseed::Int,droplets::droplets_allocations,
     println("Running simulation...")
 
     coal_func_time::FT = 0.0
-    bins::Matrix{FT} = zeros(FT, run_settings.num_bins - 1, length(run_settings.output_steps))
+    bins::Matrix{FT} = zeros(FT, run_settings.num_bins, length(run_settings.output_steps))
     threading,scheme = run_settings.coag_threading, run_settings.scheme
     simtime::FT = @CPUelapsed begin
         for i  in  1:length(run_settings.output_steps)
@@ -62,7 +62,7 @@ function coag_runtime(randseed::Int,droplets::droplets_allocations,
                 end
                 coal_func_time += ctime
             end
-            bins[:,i] = run_settings.binning_method(droplets.X, droplets.ξ,run_settings.output_steps[i],run_settings,coag_settings)
+            bins[:,i] = run_settings.binning_method(droplets,run_settings.output_steps[i],run_settings,coag_settings)
             println("Time: ", run_settings.output_steps[i], " seconds")
         end
     end
@@ -82,7 +82,7 @@ function coag_runtime_log_deficit(randseed::Int,droplets::deficit_allocations,
     println("Running simulation...")
 
     coal_func_time::FT = 0.0
-    bins::Matrix{FT} = zeros(FT, run_settings.num_bins - 1, 4)
+    bins::Matrix{FT} = zeros(FT, run_settings.num_bins, 4)
     threading,scheme = run_settings.coag_threading, run_settings.scheme
 
     simtime::FT = @CPUelapsed begin
@@ -98,7 +98,7 @@ function coag_runtime_log_deficit(randseed::Int,droplets::deficit_allocations,
                 end
                 coal_func_time += ctime
             end
-            bins[:,i] = run_settings.binning_method(droplets.droplets.X, droplets.droplets.ξ,run_settings.output_steps[i],run_settings,coag_settings)
+            bins[:,i] = run_settings.binning_method(droplets.droplets,run_settings.output_steps[i],run_settings,coag_settings)
             println("Time: ", run_settings.output_steps[i], " seconds")
         end
     end

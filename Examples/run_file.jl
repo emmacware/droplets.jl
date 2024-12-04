@@ -15,19 +15,17 @@ using Profile
 
 
 
-Ns::Int = 2^19
-scale = Ns * (Ns - 1) / 2 / (Ns / 2)
+Ns::Int = 2^15
 FT = Float64
 
-coagsettings = coag_settings{FT}(Ns=Ns,scale=scale,Δt=1)
+coagsettings = coag_settings{FT}(Ns=Ns,Δt=1)
 runsettings=run_settings{FT}(coag_threading =Serial())
 
 
-ξ, R, X = runsettings.init_method(coagsettings)
-I = collect(1:Ns)
-drops = droplets_allocations(ξ, R, X, I, zeros(FT, div(Ns, 2)), zeros(FT, div(Ns, 2)))
+drops = runsettings.init_method(coagsettings)
 
 
 bins,times = coag_runtime(1,drops,coagsettings,runsettings)
 plot()
-plot_dsd(bins)
+plot_dsd(bins,runsettings)
+

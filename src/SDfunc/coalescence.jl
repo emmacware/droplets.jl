@@ -24,8 +24,8 @@ coag_settings is a struct that holds the settings for the coalescence simulation
 Base.@kwdef struct coag_settings{FT<:AbstractFloat}
     Δt::FT = FT(1.0)
     ΔV::FT = FT(1e6)
-    Ns::Int # number of superdroplets
-    scale::FT
+    Ns::Int = 2^15# number of superdroplets
+    scale::FT = Ns * (Ns - 1) / 2 / (Ns / 2)
     R_min::FT = FT(1e-9)
     R_max::FT = FT(1e-3)
     golovin_kernel_coeff::FT = FT(1.5e3)
@@ -77,7 +77,9 @@ function init_ξ_const(settings::coag_settings{FT}) where FT<:AbstractFloat
     X0 = Float64(4*π/3*R0^3) # initial volume m3    
     Xstart::Vector{FT} = (rand(Exponential(X0), Ns))
     Rstart::Vector{FT} = ((3 .*Xstart./(4*π)).^(1/3))
-    return ξstart, Rstart, Xstart
+
+    droplets = droplets_allocations(ξstart, Rstart, Xstart, collect(1:Ns), zeros(FT, div(Ns, 2)), zeros(FT, div(Ns, 2)))
+    return droplets
 end
 
 
@@ -134,7 +136,8 @@ function init_logarithmic(settings::coag_settings{FT})where FT<:AbstractFloat
     multiplicities = pdf_values .* bin_widths_new .* dvdr * (n0*ΔV)
     ξstart::Vector{Int} = floor.(multiplicities.+0.5)
 
-return ξstart, sd_radii, volumes
+    droplets = droplets_allocations(ξstart, sd_radii, volumes, collect(1:Ns), zeros(FT, div(Ns, 2)), zeros(FT, div(Ns, 2)))
+    return droplets
 end
 
 function init_uniform_sd(settings::coag_settings{FT})where FT<:AbstractFloat
@@ -187,7 +190,8 @@ function init_uniform_sd(settings::coag_settings{FT})where FT<:AbstractFloat
     multiplicities = pdf_values .* bin_widths_new .* dvdr * (n0*ΔV)
     ξstart::Vector{Int} = floor.(multiplicities.+0.5)
 
-return ξstart, sd_radii, volumes
+    droplets = droplets_allocations(ξstart, sd_radii, volumes, collect(1:Ns), zeros(FT, div(Ns, 2)), zeros(FT, div(Ns, 2)))
+    return droplets
 end
 
 
