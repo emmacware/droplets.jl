@@ -63,7 +63,7 @@ function coag_runtime(randseed::Int,droplets::droplets_allocations,
                 coal_func_time += ctime
             end
             bins[:,i] = run_settings.binning_method(droplets,run_settings.output_steps[i],run_settings,coag_settings)
-            println("Time: ", run_settings.output_steps[i], " seconds")
+            # println("Time: ", run_settings.output_steps[i], " seconds")
         end
     end
     println("simtime =", simtime)
@@ -99,7 +99,7 @@ function coag_runtime_log_deficit(randseed::Int,droplets::deficit_allocations,
                 coal_func_time += ctime
             end
             bins[:,i] = run_settings.binning_method(droplets.droplets,run_settings.output_steps[i],run_settings,coag_settings)
-            println("Time: ", run_settings.output_steps[i], " seconds")
+            # println("Time: ", run_settings.output_steps[i], " seconds")
         end
     end
     println("simtime =", simtime)
