@@ -1,7 +1,7 @@
 #---------------------------------------------------------------------------
 #Condensation functions in this file (more description throughout the file)
 #---------------------------------------------------------------------------
-using DifferentialEquations
+# using DifferentialEquations
 export esat,sat,drdtcondensation1,drdtcondensation2,drdtcondensation3,condense_and_calc_Sv!
 export FK,FD,drkohler,eq_radius,θcondenseupdate!,qvcondenseupdate!
 
@@ -29,7 +29,7 @@ export FK,FD,drkohler,eq_radius,θcondenseupdate!,qvcondenseupdate!
 
 
 
-using Roots
+# using Roots #put this in examples
 ######################################################################
 # Functions in the Denominator of the Köhler Equation
 
@@ -111,31 +111,31 @@ end
 # Can take either the (mixing ratio and pressure) or (environmental saturation) as an argument
 # Tolerances are arbitrary but tested on multiple examples
 
-function eq_radius(m,M,qv,P,T)
-    Senv = sat(qv,P)/esat(T)
-    a = 3.3*10^(-7)/T #(m)
-    b = 4.3 *2 ./m./1e6 #m^3
-    # Cap Senv to find real root
-    if Senv > 1
-        Senv = 1
-    end
-    FindR(r) = Senv - (1+a/r - (b*M) /r^3)      
-    eqr = find_zero(FindR, (2e-8,4e-7), xtol=1e-12) #might need different tolerances?
-    return eqr
-end
+# function eq_radius(m,M,qv,P,T)
+#     Senv = sat(qv,P)/esat(T)
+#     a = 3.3*10^(-7)/T #(m)
+#     b = 4.3 *2 ./m./1e6 #m^3
+#     # Cap Senv to find real root
+#     if Senv > 1
+#         Senv = 1
+#     end
+#     FindR(r) = Senv - (1+a/r - (b*M) /r^3)      
+#     eqr = find_zero(FindR, (2e-8,4e-7), xtol=1e-12) #might need different tolerances?
+#     return eqr
+# end
 
-function eq_radius(m,M,Senv,T)
-    S = Senv/esat(T)
-    a = 3.3*10^(-7)/T #(m)
-    b = 4.3 *2 ./m./1e6 #m^3
-    # Cap Senv to find real root
-    if Senv > 1
-        Senv = 1
-    end
-    FindR(r) = S - (1+a/r - (b*M) /r^3)      
-    eqr = find_zero(FindR, (2e-8,4e-7), xtol=1e-12) #might need different tolerances?
-    return eqr
-end
+# function eq_radius(m,M,Senv,T)
+#     S = Senv/esat(T)
+#     a = 3.3*10^(-7)/T #(m)
+#     b = 4.3 *2 ./m./1e6 #m^3
+#     # Cap Senv to find real root
+#     if Senv > 1
+#         Senv = 1
+#     end
+#     FindR(r) = S - (1+a/r - (b*M) /r^3)      
+#     eqr = find_zero(FindR, (2e-8,4e-7), xtol=1e-12) #might need different tolerances?
+#     return eqr
+# end
 
 ######################################################################
 # condense_and_calc_Sv! calculates the change in volume of droplets in a grid cell
@@ -159,98 +159,98 @@ end
 #Not sure how to implement this in 2D looping over the full Ns superdroplets
 #without splitting it up by grid yet.. is that possible?
 
-function condense_and_calc_Sv!(qvarray,T,P,ρ,Δtg,ΔgridV,Nx,Ny,grid_dict)
-    Sv = zeros(Nx,Ny)
-    for i in 1:Nx
-        for j in 1:Ny
-            grid = (i,j)
-            top = 0
-            Ngrid = length(grid_dict[(i,j)])
-            a=3.3*10^(-7)./T[i,j] #(m K/T)
-            S = sat(qvarray[i,j],P[i,j])/esat(T[i,j])
-            denom = (FK(T[i,j])+FD(T[i,j]))
-            if isempty(grid_dict[i,j])
-                continue
-            else
+# function condense_and_calc_Sv!(qvarray,T,P,ρ,Δtg,ΔgridV,Nx,Ny,grid_dict)
+#     Sv = zeros(Nx,Ny)
+#     for i in 1:Nx
+#         for j in 1:Ny
+#             grid = (i,j)
+#             top = 0
+#             Ngrid = length(grid_dict[(i,j)])
+#             a=3.3*10^(-7)./T[i,j] #(m K/T)
+#             S = sat(qvarray[i,j],P[i,j])/esat(T[i,j])
+#             denom = (FK(T[i,j])+FD(T[i,j]))
+#             if isempty(grid_dict[i,j])
+#                 continue
+#             else
 
-                dropletspre = ([droplet.X*droplet.ξ*constants.ρl for droplet in grid_dict[i,j]]).+0.0
+#                 dropletspre = ([droplet.X*droplet.ξ*constants.ρl for droplet in grid_dict[i,j]]).+0.0
 
-                # condensationpergridcellradius!(grid_dict[i,j],qvarray[i,j],T[i,j],P[i,j],Δtg)
-                for droplet in grid_dict[i,j]
-                    b=4.3 *2/droplet.m/1e6 #m^3 for NaCL
-                    pcondense = (a,b,S,droplet.M,denom)
-                    tspan = (0.0,Δtg)
-                    Rc = droplet.R+0.0
-                    # rODE = ODEProblem{false}(drdtcondensation1,Rc,tspan,pcondense)
-                    rODE = ODEProblem(drdtcondensation1,Rc,tspan,pcondense)
+#                 # condensationpergridcellradius!(grid_dict[i,j],qvarray[i,j],T[i,j],P[i,j],Δtg)
+#                 for droplet in grid_dict[i,j]
+#                     b=4.3 *2/droplet.m/1e6 #m^3 for NaCL
+#                     pcondense = (a,b,S,droplet.M,denom)
+#                     tspan = (0.0,Δtg)
+#                     Rc = droplet.R+0.0
+#                     # rODE = ODEProblem{false}(drdtcondensation1,Rc,tspan,pcondense)
+#                     rODE = ODEProblem(drdtcondensation1,Rc,tspan,pcondense)
 
-                    # droplet.R = solve(rODE,AutoTsit5(Rosenbrock23()), dt=Δtg).u[end]
-                    droplet.R = solve(rODE,ImplicitEuler()).u[end]
-                    if droplet.R <=0 #failsafe, should change to dry radius
-                        droplet.R = 1e-7
-                    end
-                    droplet.X = 4/3 * π * droplet.R^3
-                end
+#                     # droplet.R = solve(rODE,AutoTsit5(Rosenbrock23()), dt=Δtg).u[end]
+#                     droplet.R = solve(rODE,ImplicitEuler()).u[end]
+#                     if droplet.R <=0 #failsafe, should change to dry radius
+#                         droplet.R = 1e-7
+#                     end
+#                     droplet.X = 4/3 * π * droplet.R^3
+#                 end
                 
 
-                dropletspost = ([droplet.X*droplet.ξ*constants.ρl for droplet in grid_dict[i,j]]).+0.0
-                top = sum(dropletspost.-dropletspre)/Δtg
-                # print(top)
-            end
-            Sv[i,j] = -top/(ρ[i,j] * ΔgridV)
+#                 dropletspost = ([droplet.X*droplet.ξ*constants.ρl for droplet in grid_dict[i,j]]).+0.0
+#                 top = sum(dropletspost.-dropletspre)/Δtg
+#                 # print(top)
+#             end
+#             Sv[i,j] = -top/(ρ[i,j] * ΔgridV)
             
-        end
-    end
-    return Sv
-end
+#         end
+#     end
+#     return Sv
+# end
 
 
-function condense_and_calc_Sv!(R,ξ,X,M,m,qvarray,T,P,ρ,Δtg,ΔV)
+# function condense_and_calc_Sv!(R,ξ,X,M,m,qvarray,T,P,ρ,Δtg,ΔV)
 
-        a=3.3*10^(-7)./T[i,j] #(m K/T)
-        b=4.3 *2 ./m./1e6 #m^3 for NaCL
-        S = sat(qvarray,P)/esat(T)
-        denom = (FK(T)+FD(T))
-        dropletspre = (X.*ξ.*constants.ρl).+0.0
-        pcondense = (a,b,S,M,denom)
-        tspan = (0.0,Δtg)
-        Rc = R.+0.0
+#         a=3.3*10^(-7)./T[i,j] #(m K/T)
+#         b=4.3 *2 ./m./1e6 #m^3 for NaCL
+#         S = sat(qvarray,P)/esat(T)
+#         denom = (FK(T)+FD(T))
+#         dropletspre = (X.*ξ.*constants.ρl).+0.0
+#         pcondense = (a,b,S,M,denom)
+#         tspan = (0.0,Δtg)
+#         Rc = R.+0.0
 
-        #still using drdtcondensation1 because calculating S, M, and denom outside is more efficient
-        #becuase we are doing this for every droplet in the vectors
+#         #still using drdtcondensation1 because calculating S, M, and denom outside is more efficient
+#         #becuase we are doing this for every droplet in the vectors
 
-        rODE = ODEProblem{false}(drdtcondensation1,Rc,tspan,pcondense) 
-        R = solve(rODE,AutoTsit5(Rosenbrock23()), dt=Δtg).u[end]
-        # R = solve(rODE,ImplicitEuler()).u[end]
-        #update X
-        X = 4/3 * π .* R.^3
-        dropletspost = (X.*ξ.*constants.ρl).+0.0
+#         rODE = ODEProblem{false}(drdtcondensation1,Rc,tspan,pcondense) 
+#         R = solve(rODE,AutoTsit5(Rosenbrock23()), dt=Δtg).u[end]
+#         # R = solve(rODE,ImplicitEuler()).u[end]
+#         #update X
+#         X = 4/3 * π .* R.^3
+#         dropletspost = (X.*ξ.*constants.ρl).+0.0
 
-        Sv = sum(dropletspost.-dropletspre)/(Δtg* ρ * ΔV)
-    return R,X,Sv
-end
+#         Sv = sum(dropletspost.-dropletspre)/(Δtg* ρ * ΔV)
+#     return R,X,Sv
+# end
 
-function condense_and_calc_Sv!(R,ξ,X,M,m,Senv,T,ρ,Δtg,ΔV)
+# function condense_and_calc_Sv!(R,ξ,X,M,m,Senv,T,ρ,Δtg,ΔV)
 
-    a=3.3*10^(-7)./T #(m K/T)
-    b=4.3 *2 ./m./1e6 #m^3 for NaCL
-    S = Senv/esat(T)
-    denom = (FK(T)+FD(T))
-    dropletspre = (X.*ξ.*constants.ρl).+0.0
-    pcondense = (a,b,S,M,denom)
-    tspan = (0.0,Δtg)
-    Rc = R.+0.0 #necessary?
-    #still using drdtcondensation1 because calculating S, M, and denom outside is more efficient
-    #becuase we are doing this for every droplet in the vectors
-    rODE = ODEProblem{false}(drdtcondensation1,Rc,tspan,pcondense)
-    R = solve(rODE,AutoTsit5(Rosenbrock23()), dt=Δtg).u[end]
-    # R = solve(rODE,ImplicitEuler()).u[end]
-    X = 4/3 * π .* R.^3
+#     a=3.3*10^(-7)./T #(m K/T)
+#     b=4.3 *2 ./m./1e6 #m^3 for NaCL
+#     S = Senv/esat(T)
+#     denom = (FK(T)+FD(T))
+#     dropletspre = (X.*ξ.*constants.ρl).+0.0
+#     pcondense = (a,b,S,M,denom)
+#     tspan = (0.0,Δtg)
+#     Rc = R.+0.0 #necessary?
+#     #still using drdtcondensation1 because calculating S, M, and denom outside is more efficient
+#     #becuase we are doing this for every droplet in the vectors
+#     rODE = ODEProblem{false}(drdtcondensation1,Rc,tspan,pcondense)
+#     R = solve(rODE,AutoTsit5(Rosenbrock23()), dt=Δtg).u[end]
+#     # R = solve(rODE,ImplicitEuler()).u[end]
+#     X = 4/3 * π .* R.^3
 
-    dropletspost = (X.*ξ.*constants.ρl).+0.0
-    Sv = sum(dropletspost.-dropletspre)/(Δtg* ρ * ΔV)
-    return R,X,Sv
-end
+#     dropletspost = (X.*ξ.*constants.ρl).+0.0
+#     Sv = sum(dropletspost.-dropletspre)/(Δtg* ρ * ΔV)
+#     return R,X,Sv
+# end
 
 ######################################################################
 # θcondenseupdate! and qvcondenseupdate! are functions to update the 
