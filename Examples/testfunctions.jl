@@ -1,45 +1,5 @@
 using Plots
 
-# function build_box_run(coag_settings::coag_settings{FT}, run_settings::run_settings{FT}) where FT<:AbstractFloat
-#     ξ, R, X = run_settings.init_method(coag_settings)
-#     Ns::Int = coag_settings.Ns
-#     I::Vector{Int} = shuffle(1:Ns)
-    
-#     function coag_runtime(randseed::Int,ξ::Vector{Int},R::Vector{FT},X::Vector{FT},
-#         I::Vector{Int},coag_settings::coag_settings{FT},run_settings::run_settings{FT}) where FT<:AbstractFloat
-#         Random.seed!(randseed)
-        
-#         println("Running simulation...")
-#         seconds::FT = 0.0
-
-#         coal_func_time::FT = 0.0
-#         bins::Matrix{FT} = zeros(FT, run_settings.num_bins - 1, 0)
-
-#         ϕ = Vector{FT}(undef, div(coag_settings.Ns, 2))
-#         simtime::FT = @elapsed begin
-#             while seconds <= run_settings.output_steps[end]
-#                 if seconds in run_settings.output_steps
-#                     println("Time: ", seconds, " seconds")
-#                     xx, yy = run_settings.binning_method(X, ξ,seconds, run_settings)
-#                     bins = hcat(bins, yy)
-#                 end
-
-#                 ctime::FT = @elapsed begin
-#                     coalescence_timestep!(run_settings.coag_threading, run_settings.scheme, ξ, R, X, I,ϕ,coag_settings)
-#                 end
-#                 coal_func_time += ctime
-#                 seconds += coag_settings.Δt
-#                 # GC.gc()
-#             end
-#         end
-#         println("simtime =", simtime)
-#         println("coal_func_time =", coal_func_time)
-
-#         return bins, coal_func_time
-#     end
-#     return coag_runtime
-# end
-
 function coag_runtime(randseed::Int,droplets::droplets_allocations,
     coag_settings::coag_settings{FT},run_settings::run_settings{FT}) where FT<:AbstractFloat
     
@@ -62,7 +22,7 @@ function coag_runtime(randseed::Int,droplets::droplets_allocations,
                 end
                 coal_func_time += ctime
             end
-            bins[:,i] = run_settings.binning_method(droplets,run_settings.output_steps[i],run_settings,coag_settings)
+            bins[:,i] = binning_func(droplets,run_settings.output_steps[i],run_settings,coag_settings)
             # println("Time: ", run_settings.output_steps[i], " seconds")
         end
     end
@@ -98,7 +58,7 @@ function coag_runtime_log_deficit(randseed::Int,droplets::deficit_allocations,
                 end
                 coal_func_time += ctime
             end
-            bins[:,i] = run_settings.binning_method(droplets.droplets,run_settings.output_steps[i],run_settings,coag_settings)
+            bins[:,i] = binning_func(droplets.droplets,run_settings.output_steps[i],run_settings,coag_settings)
             # println("Time: ", run_settings.output_steps[i], " seconds")
         end
     end
@@ -106,4 +66,19 @@ function coag_runtime_log_deficit(randseed::Int,droplets::deficit_allocations,
     println("coal_func_time =", coal_func_time)
 
     return bins, coal_func_time,deficit_droplets,deficit_pairs
+end
+
+function plot_dsd(bins,runsettings::run_settings{FT};color="black") where FT<:AbstractFloat   
+    radius_bins_edges = runsettings.radius_bins_edges
+    mids = 0.5*(radius_bins_edges[1:end-1] + radius_bins_edges[2:end])*1e6
+    plot1 = plot!(mids,bins,lc=color,xaxis=:log,legend=false)
+    return plot1
+end
+
+function ppmc_dsd(bins,runsettings::run_settings{FT};color="black") where FT<:AbstractFloat
+    radius_bins_edges = runsettings.radius_bins_edges
+    mids = 0.5*(radius_bins_edges[1:end-1] + radius_bins_edges[2:end])
+    bins = replace(bins, 0 => 0.0001)
+    plot1 = plot!(mids,bins,lc=color,xaxis=:log,yaxis=:log,legend=false,ylims = [1e9,2e14])
+    return plot1
 end

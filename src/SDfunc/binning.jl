@@ -1,10 +1,7 @@
 #---------------------------------------------------------
 #Visualization functions for droplet size distribution
 #---------------------------------------------------------
-
-
-
-
+export run_settings, error_measure, number_density, mass_density_lnr, binning_func, binning_1d, smoothbins!
 
 #####
 
@@ -22,9 +19,7 @@ Base.@kwdef struct run_settings{FT<:AbstractFloat} #??
     binning_method = mass_density_lnr #number_density
     normalize_bins_dlnr = true
     # condensation::string = "none" #not yet
-    #PySDM does steps instead of seconds+=dt... think about it
     #decide output here? bins,error,timing,...
-    #should constants go in here? Or a constructor? 
 end
 
 
@@ -39,71 +34,31 @@ function error_measure_old(y,ytrue,x)
 end
 
 function error_measure(y,ytrue)
-    return sqrt(mean((y.-ytrue).^2))
-end
-
-# Gaussian kernel density estimator function
-# Useless honestly just bin it, smoothing function is there if you want it
-function gnormal(R,X,ξ,Ns)
-    σ₀ = 0.62
-    σ = σ₀*Ns^(-1/5)
-    W(Y) = 1/(2*π).^0.5/σ * exp.(-Y.^2 ./(2*σ^2))
-    Y = [log(R[i]) .- log.(R) for i = 1:lastindex(R)]
-    g = 1/ΔV * sum(ξ.*X.*ρl.*1e3.*W.(Y)) # 1e3 converts kg to g
-    return g
+    return sqrt(sum((y.-ytrue).^2)/length(y))
 end
 
 
-function plot_dsd(bins,runsettings::run_settings{FT};color="black") where FT<:AbstractFloat   
-    radius_bins_edges = runsettings.radius_bins_edges
-    mids = 0.5*(radius_bins_edges[1:end-1] + radius_bins_edges[2:end])*1e6
-    plot1 = plot!(mids,bins,lc=color,xaxis=:log,legend=false)
-    return plot1
-end
-
-function ppmc_dsd(bins,runsettings::run_settings{FT};color="black") where FT<:AbstractFloat
-    radius_bins_edges = runsettings.radius_bins_edges
-    mids = 0.5*(radius_bins_edges[1:end-1] + radius_bins_edges[2:end])
-    bins = replace(bins, 0 => 0.0001)
-    plot1 = plot!(mids,bins,lc=color,xaxis=:log,yaxis=:log,legend=false,ylims = [1e9,2e14])
-    return plot1
+function number_density(droplets::droplets_allocations,coagsettings::coag_settings{FT}) where FT<:AbstractFloat
+    weights = droplets.ξ/coagsettings.ΔV
+    return weights
 end
 
 
+function mass_density_lnr(droplets::droplets_allocations,coagsettings::coag_settings{FT}) where FT<:AbstractFloat
 
-function number_density(droplets::droplets_allocations, t::FT,
-    runsettings::run_settings{FT},coagsettings::coag_settings{FT}) where FT<:AbstractFloat
-
-    i = sortperm(droplets.R)
-    R::Vector{FT} = droplets.R[i]
-    ξ::Vector{} = droplets.ξ[i]
-
-    weights = ξ/coagsettings.ΔV
-
-    numdens = binning_1d(R,weights,runsettings)
-
-    if t != 0 && runsettings.smooth == true
-        numdens = smoothbins!(numdens,runsettings)
-    end
-
-    return numdens
-end
-
-
-function mass_density_lnr(droplets::droplets_allocations, t::FT,
-    runsettings::run_settings{FT},coagsettings::coag_settings{FT}) where FT<:AbstractFloat
-    
-    i = sortperm(droplets.R)
-    Rsort::Vector{FT} = droplets.R[i]
-    Xsort::Vector{FT} = droplets.X[i]
-    ξsort::Vector{} = droplets.ξ[i]
-
-    weights = ξsort .* Xsort
+    weights = droplets.ξ .* droplets.X
     weights *= 1e3 # convert to mass
     weights *= 1e3 # convert from kg to grams
     weights /= coagsettings.ΔV 
 
-    numdens = binning_1d(Rsort,weights,runsettings)
+    return weights
+end
+
+function binning_func(droplets::droplets_allocations, t::FT,
+    runsettings::run_settings{FT},coagsettings::coag_settings{FT}) where FT<:AbstractFloat
+
+    weights = runsettings.binning_method(droplets,coagsettings)
+    numdens = binning_1d(droplets.R,weights,runsettings)
 
     if t != 0 && runsettings.smooth == true
         numdens = smoothbins!(numdens,runsettings)
@@ -112,13 +67,14 @@ function mass_density_lnr(droplets::droplets_allocations, t::FT,
     return numdens
 end
 
-
-
-function binning_1d(values::Vector{},weights::Vector{},runsettings::run_settings{FT}) where FT<:AbstractFloat
+function binning_1d(values_unsorted::Vector{},weights_unsorted::Vector{},runsettings::run_settings{FT}) where FT<:AbstractFloat
     bin_edges = runsettings.radius_bins_edges
 
     numdens::Vector{FT} = zeros(runsettings.num_bins)
-    
+    idx = sortperm(values_unsorted)
+    values = values_unsorted[idx]
+    weights = weights_unsorted[idx]
+
     droplet_idx = 1
     for j in 1:runsettings.num_bins
         bin_edge_high = (bin_edges[j+1])
@@ -147,13 +103,15 @@ function smoothbins!(numdens::Vector{FT},runsettings::run_settings{FT}) where FT
     for _ in 1:2
 
         for i in scope+1:length(numdens)-scope
-            new_numdens[i] = mean(numdens[i-scope:i+scope])
+            new_numdens[i] = sum(numdens[i-scope:i+scope])/length(numdens[i-scope:i+scope])
         end
         scope = 1
 
         for i in scope+1:length(numdens)-scope
-            numdens[i] = mean(new_numdens[i-scope:i+scope])
+            numdens[i] = sum(new_numdens[i-scope:i+scope])/length(new_numdens[i-scope:i+scope])
         end
     end
     return numdens
 end
+
+
