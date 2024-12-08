@@ -8,7 +8,7 @@ using Droplets
 using ComponentArrays
 
 include(joinpath(pkgdir(CM), "parcel", "Parcel.jl"))
-include("helperfunctions.jl")
+include("CM_sdfunctions.jl")
 
 FT = Float32
 Ns::Int = 2^14
