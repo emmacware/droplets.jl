@@ -8,6 +8,7 @@ using Interpolations # for hydrodynamic kernel/terminal velocity
 using Droplets
 using CPUTime
 include("../testfunctions.jl")
+include("pysce.jl")
 
 # A comparison with PySDM and JSDM for box collision-coalescence
 
@@ -22,6 +23,7 @@ n0 = Integer(2^23) # initial number density of droplets, 1/m^3
 Δt = Float64(1.0) # seconds
 ΔV = Float64(10^6) # m^3 box volume
 R0 = Float64(30.531e-6) # m
+X0 = Float64(4*π/3*R0^3) # m^3
 Random.seed!(30)
 kernel = golovin #hydrodynamic,golovin -- for Julia version, edit PySDM kernel in Test Environment
 
@@ -30,7 +32,7 @@ kernel = golovin #hydrodynamic,golovin -- for Julia version, edit PySDM kernel i
 #Set UP PYSDM
 ConstantMultiplicity = pyimport("PySDM.initialisation.sampling.spectral_sampling").ConstantMultiplicity
 Exponentialpy = pyimport("PySDM.initialisation.spectra").Exponential
-initial_spectrum = Exponentialpy(norm_factor=n0*ΔV, scale=1.19e5 * si.um^3)
+initial_spectrum = Exponentialpy(norm_factor=n0*ΔV, scale=(X0*1e18) * si.um^3)
 attributes = Dict()
 attributes["volume"], attributes["multiplicity"] = ConstantMultiplicity(spectrum=initial_spectrum).sample(n_sd)
 attributes["multiplicity"] = round.(attributes["multiplicity"])
@@ -65,12 +67,17 @@ particulator = builder.build(attributes, products)
 #-------------------------
 # Run
 #-------------------------
-
-#julia
-plot()
 FT = Float64
 coagsettings = coag_settings{FT}(Ns=n_sd,Δt=Δt,ΔV=ΔV,)
-runsettings=run_settings{FT}(coag_threading =Serial())
+runsettings=run_settings{FT}(coag_threading =Serial(),num_bins=127, output_steps=collect(0:1200:3600))
+
+plot()
+#analytic solution
+
+asol = analytic_soln([0.001,1200,2400,3600],radius_bins_edges,n0,X0,ΔV, 1500)
+plot_dsd(asol,runsettings,color="red",label=["Analytic Soln" false false false],legend=true)
+
+#julia
 drops = droplets_allocations(ξ_start, R_start, X_start, collect(1:n_sd), zeros(FT, div(n_sd, 2)), zeros(FT, div(n_sd, 2)))
 
 bins,times = coag_runtime(1,drops,coagsettings,runsettings)
@@ -106,23 +113,13 @@ for step = 0:1200:3600
     end
 
     plot2 = plot!(
-        radius_bins_edges[1:end-1] / si.um,
-        # particulator.products["dv/dlnr"].get()[:] * rho_w / si.g,
-        water,
-        lc=:dodgerblue,
-        # ls=:dash,
-        # line=(2,:dash),
-        # linetype=:steppost,
-        xaxis=:log,
-        # xlabel="particle radius [µm]",
-        # ylabel="dm/dlnr [g/m^3/(unit dr/r)]",
-        label= label #"t = $step s"
-        
-    )   
+        (radius_bins_edges[1:end-1]+radius_bins_edges[2:end])/2 / si.um, water,
+        lc=:dodgerblue,xaxis=:log, label= label) #"t = $step s")   
 end
 end
 print("PySDM time: ", pytime)
 display(plot2)
+
 #-------------------------
 # Plot time stamps
 annotate!(13, 1, text("t= 0s", 8, :left))
@@ -132,6 +129,8 @@ annotate!(1100, 1, text("t= 3600s", 8, :left))
 title!("Comparison of Droplets.jl and PySDM")
 xlabel!("Particle radius [µm]")
 ylabel!("Mass Density [g/m^3/(unit dr/r)]")
+
+
 
 
 
