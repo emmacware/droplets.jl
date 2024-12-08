@@ -8,9 +8,7 @@ using Combinatorics
 using Random
 export init_ξ_const,init_logarithmic,init_uniform_sd,terminal_v,collision_efficiency,hydrodynamic,golovin,calc_Ps,coalescence_timestep!,all_or_nothing!,coalescence_unittest_graph!
 export Serial, Parallel,Adaptive,none,coag_settings,droplets_allocations,pair_Ps!,sdm_update!
-export deficit_allocations,log_deficit
-
-
+export deficit_allocations,log_deficit,init_monodisperse
 
 struct Serial end
 struct Parallel end
@@ -72,7 +70,7 @@ function init_ξ_const(settings::coag_settings{FT}) where FT<:AbstractFloat
     ΔV = settings.ΔV
     n0 = settings.n0
     R0 = settings.R0
-    ξstart::Vector{Int} = (n0*ΔV/Ns*ones(Ns))
+    ξstart::Vector{Int} = (div(n0*ΔV,Ns)*ones(Ns))
     # R0 = Float64(30.531e-6) # meters
     X0 = Float64(4*π/3*R0^3) # initial volume m3    
     Xstart::Vector{FT} = (rand(Exponential(X0), Ns))
@@ -191,6 +189,20 @@ function init_uniform_sd(settings::coag_settings{FT})where FT<:AbstractFloat
     ξstart::Vector{Int} = floor.(multiplicities.+0.5)
 
     droplets = droplets_allocations(ξstart, sd_radii, volumes, collect(1:Ns), zeros(FT, div(Ns, 2)), zeros(FT, div(Ns, 2)))
+    return droplets
+end
+
+
+function init_monodisperse(settings::coag_settings{FT})where FT<:AbstractFloat
+    Ns = settings.Ns
+    ΔV = settings.ΔV
+    n0 = settings.n0
+    R0 = settings.R0
+    ξstart::Vector{Int} = (div(n0*ΔV,Ns)*ones(Ns))
+    Xstart::Vector{FT} = (4*π/3*R0^3*ones(Ns))
+    Rstart::Vector{FT} = (R0*ones(Ns))
+
+    droplets = droplets_allocations(ξstart, Rstart, Xstart, collect(1:Ns), zeros(FT, div(Ns, 2)), zeros(FT, div(Ns, 2)))
     return droplets
 end
 
