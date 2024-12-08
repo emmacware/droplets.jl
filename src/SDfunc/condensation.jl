@@ -74,13 +74,13 @@ end
 
 function drdtcondensation2(u,p,t)
     M,m,T,qv,P = p
-    du = drkohler(u,M,m,T,qv,P)
+    du = drkohler(u,M,m,T,qv,P,t)
     return du
 end
 
 function drdtcondensation3(u,p,t)
     M,m,T,Senv = p
-    du = drkohler(u,M,m,T,Senv)
+    du = drkohler(u,M,m,T,Senv,t)
     return du
 end
 

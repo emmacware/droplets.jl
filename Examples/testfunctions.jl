@@ -68,10 +68,10 @@ function coag_runtime_log_deficit(randseed::Int,droplets::deficit_allocations,
     return bins, coal_func_time,deficit_droplets,deficit_pairs
 end
 
-function plot_dsd(bins,runsettings::run_settings{FT};color="black") where FT<:AbstractFloat   
+function plot_dsd(bins,runsettings::run_settings{FT};color="black",label=false,legend=false) where FT<:AbstractFloat   
     radius_bins_edges = runsettings.radius_bins_edges
     mids = 0.5*(radius_bins_edges[1:end-1] + radius_bins_edges[2:end])*1e6
-    plot1 = plot!(mids,bins,lc=color,xaxis=:log,legend=false)
+    plot1 = plot!(mids,bins,lc=color,xaxis=:log,label=label,legend=legend)
     return plot1
 end
 
