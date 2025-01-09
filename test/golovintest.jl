@@ -1,8 +1,9 @@
 using Droplets
 using Test
+using Pkg
 
 @testset begin
-    using Pkg
+
     Pkg.add(["Combinatorics", "Distributions", "Random", "JSON", "DelimitedFiles", "CPUTime", "Plots"])
     using Random,Combinatorics,Distributions,CPUTime
     include("../Examples/testfunctions.jl")
