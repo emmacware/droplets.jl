@@ -1,13 +1,13 @@
 using Droplets
 using Test
-using Pkg
+# import Pkg; Pkg.add("Pkg")
 
 @testset begin
 
-    Pkg.add(["Combinatorics", "Distributions", "Random", "JSON", "DelimitedFiles", "CPUTime", "Plots"])
-    using Random,Combinatorics,Distributions,CPUTime
+    # Pkg.add(["Combinatorics", "Distributions", "Random", "JSON", "DelimitedFiles", "CPUTime", "Plots"])
+    # using Random,Combinatorics,Distributions,CPUTime
     include("../Examples/testfunctions.jl")
-    using DelimitedFiles,JSON,Plots
+    # using 
         
     FT = Float64
     setup = Dict()
@@ -51,12 +51,12 @@ using Pkg
     drops = runsettings_mass_density.init_method(coagsettings)
     mass_dens_bin,timing = coag_runtime(2,drops,coagsettings,runsettings_mass_density)
 
-    dict = Dict()
-    dict["Number Concentration (m^-3)"] = num_dens_bin
-    dict["Mass Density (g/m^3 dlnr)"] = mass_dens_bin
-    json_string = JSON.json(dict)
+    # dict = Dict()
+    # dict["Number Concentration (m^-3)"] = num_dens_bin
+    # dict["Mass Density (g/m^3 dlnr)"] = mass_dens_bin
+    # json_string = JSON.json(dict)
 
-    open("output.json", "w") do file
-        write(file, json_string)
-    end
+    # open("output.json", "w") do file
+    #     write(file, json_string)
+    # end
 end
