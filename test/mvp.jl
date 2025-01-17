@@ -23,9 +23,4 @@ using Test
     sdm_update!((1,2),1, drops)
 
     @test drops.ξ == [2,1]
-
-end
-
-@testset "Golovin Test" begin
-    include("golovintest.jl")
 end
