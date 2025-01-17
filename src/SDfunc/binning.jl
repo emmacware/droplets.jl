@@ -11,7 +11,7 @@ Base.@kwdef struct run_settings{FT<:AbstractFloat} #??
     smooth::Bool = true #bin smoothing
     smooth_scope::Int = Int(2)
     init_random_seed::Int = Int(30) 
-    coag_threading = Parallel() # Serial(),use Julia NThreads for coalescence
+    coag_threading =  Serial()#Parallel(),use Julia NThreads for coalescence
     scheme = none() #Adaptive,Small_Alpha
     output_steps::Vector{FT} = [0,1200,2400,3600]
     init_method = init_logarithmic #init_ξ_const,init_uniform_sd
