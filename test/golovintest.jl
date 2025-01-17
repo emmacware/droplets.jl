@@ -4,7 +4,7 @@ using Random,Combinatorics,Distributions,CPUTime
 
 @testset begin
 
-    include("../Examples/testfunctions.jl")
+    include(joinpath("..", "Examples", "testfunctions.jl"))
     # using 
         
     FT = Float64
