@@ -20,12 +20,17 @@ using Test
 
     drops.pαdt[1]=1
     drops.ϕ[1]=0.5
-    sdm_update!((1,2),1, drops)
+    lowest_zero = Ref(false)
+    sdm_update!((1,2),1, drops,lowest_zero)
 
     @test drops.ξ == [2,1]
 
 end
 
-@testset "Golovin Test" begin
-    include("golovintest.jl")
+# @testset "Golovin Test" begin
+#     include("golovintest.jl")
+# end
+
+@testset "Coalescence" begin
+    include("coalescence_tests.jl")
 end

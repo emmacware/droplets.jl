@@ -2,8 +2,8 @@
 #Condensation functions in this file (more description throughout the file)
 #---------------------------------------------------------------------------
 # using DifferentialEquations
-export esat,sat,drdtcondensation1,drdtcondensation2,drdtcondensation3,condense_and_calc_Sv!
-export FK,FD,drkohler,eq_radius,θcondenseupdate!,qvcondenseupdate!,dXkohler_function_of_radius
+export esat,sat,drdtcondensation1,drdtcondensation2,drdtcondensation3#,condense_and_calc_Sv!
+export FK,FD,drkohler,θcondenseupdate!,qvcondenseupdate!,dXkohler_function_of_radius
 export dXkohler_function_of_radius_activated,drkohler_activated
 
 # FK(T),            returns FK in the Köhler equation
