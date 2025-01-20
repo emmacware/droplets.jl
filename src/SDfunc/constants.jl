@@ -2,7 +2,7 @@
 # Constants
 ##################################################
 
-export Constants,constants #does this need to be capital somewhere else
+export Constants,constants
 # export diffusion_constant_water_vapor, density_liquid_water, dry_air_Rd, water_vapor_Rv, gravity_const, latent_heat_vaporization, dry_air_Cp    
 
 # ρl = Float64(1000.0) # Density of water kg/m3.

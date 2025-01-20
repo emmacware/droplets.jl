@@ -78,7 +78,7 @@ asol = analytic_soln([0.001,1200,2400,3600],radius_bins_edges,n0,X0,ΔV, 1500)
 plot_dsd(asol,runsettings,color="red",label=["Analytic Soln" false false false],legend=true)
 
 #julia
-drops = droplets_allocations(ξ_start, R_start, X_start, collect(1:n_sd), zeros(FT, div(n_sd, 2)), zeros(FT, div(n_sd, 2)))
+drops = droplet_attributes(ξ_start, R_start, X_start)
 
 bins,times = coag_runtime(1,drops,coagsettings,runsettings)
 plot2 = plot_dsd(bins,runsettings,color="black",label=["Droplets.jl" false false false],legend=true)

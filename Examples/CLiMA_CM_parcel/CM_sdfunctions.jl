@@ -14,7 +14,7 @@ function parcel_model_sd(dY, Y_CompVec, p, t)
     Y = Y_CompVec.IC
     FT = eltype(Y)
     # Simulation parameters
-    (; prescribed_thermodynamics, cooling_rate, expansion_rate) = p
+    (; prescribed_thermodynamics, t_profile, T_profile, P_profile) = p
     (; wps, tps, r_nuc, w) = p
     (; liq_distr, ice_distr) = p
     (; aero_act_params, dep_params, imm_params, hom_params) = p
@@ -116,11 +116,11 @@ function parcel_model_sd(dY, Y_CompVec, p, t)
         (a2 + a4) * Sₗ * dqᵢ_dt_v2i - a5 * Sₗ * dqᵢ_dt_l2i
 
     dp_air_dt =
-        prescribed_thermodynamics ? expansion_rate :
+        prescribed_thermodynamics ? AIDA_rate(t, t_profile, P_profile) :
         -p_air * grav / R_air / T * w
 
     dT_dt =
-        prescribed_thermodynamics ? cooling_rate :
+        prescribed_thermodynamics ? AIDA_rate(t, t_profile, T_profile) :
         -grav / cp_air * w +
         L_vap / cp_air * dqₗ_dt_v2l +
         L_fus / cp_air * dqᵢ_dt_l2i +
@@ -251,8 +251,9 @@ function run_parcel_sd(d_Y, t_0, t_end, pp)
     # Parameters for the ODE solver
     p = (
         prescribed_thermodynamics = pp.prescribed_thermodynamics,
-        cooling_rate = pp.cooling_rate,
-        expansion_rate = pp.expansion_rate,
+        t_profile = pp.t_profile,
+        T_profile = pp.T_profile,
+        P_profile = pp.P_profile,
         liq_distr = liq_distr,
         ice_distr = ice_distr,
         aero_act_params = aero_act_params,

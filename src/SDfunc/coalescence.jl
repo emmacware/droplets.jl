@@ -8,11 +8,12 @@ using Combinatorics
 using Random
 using Interpolations
 export init_ξ_const,init_logarithmic,init_uniform_sd,terminal_v,hydrodynamic,golovin,coalescence_timestep!
-export Serial, Parallel,Adaptive,none,coag_settings,droplets_allocations,pair_Ps!,sdm_update!
+export Serial, Parallel,Adaptive,none,coag_settings,droplet_attributes,pair_Ps!,sdm_update!
 export deficit_allocations,log_deficit,init_monodisperse
 
 # for Testing
-export adaptive_pαdt!, pair_Ps_adaptive!,compute_pαdt!,sdm_update_log_deficit!,split_highest_multiplicity!
+export adaptive_pαdt!, pair_Ps_adaptive!,compute_pαdt!,sdm_update_log_deficit!,split_highest_multiplicity!,test_pairs!
+export coagulation_run
 
 # fix and export: collision_efficiency
 
@@ -39,18 +40,46 @@ Base.@kwdef struct coag_settings{FT<:AbstractFloat}
     R0::FT = FT(30.531e-6) # initial radius
 end
 
-struct droplets_allocations{FT<:AbstractFloat}
+struct droplet_attributes{FT<:AbstractFloat}
     ξ::Vector{Int}
     R::Vector{FT}
     X::Vector{FT}
+    # I::Vector{Int}
+    # pαdt::Vector{FT}
+    # ϕ::Vector{FT}
+end
+
+
+struct coagulation_run{FT<:AbstractFloat}
+    Ns::Int
     I::Vector{Int}
     pαdt::Vector{FT}
     ϕ::Vector{FT}
+    lowest_zero::Ref{Bool}
+    deficit::Ref{FT}
+
+    function coagulation_run{FT}(Ns::Int) where FT<:AbstractFloat
+        I = collect(1:Ns)
+        pαdt = zeros(FT, div(Ns, 2))
+        ϕ = zeros(FT, div(Ns, 2))
+        lowest_zero = Ref(false)
+        deficit = Ref(zero(FT))
+        new{FT}(Ns, I, pαdt, ϕ, lowest_zero, deficit)
+    end
 end
 
+#about to be redundant
 struct deficit_allocations{FT<:AbstractFloat}
-    droplets::droplets_allocations{FT}
+    droplets::droplet_attributes{FT}
+    coag_data::coagulation_run{FT}
     deficit::Vector{FT}
+
+    function deficit_allocations{FT}(droplets::droplet_attributes{FT}) where FT<:AbstractFloat
+        Ns = length(droplets.ξ)
+        coag_data = coagulation_run{FT}(Ns)
+        deficit = zeros(FT, div(Ns, 2))
+        new{FT}(droplets,coag_data,deficit)
+    end
 end
 
 
@@ -76,11 +105,9 @@ function init_ξ_const(settings::coag_settings{FT}) where FT<:AbstractFloat
     Xstart::Vector{FT} = (rand(Exponential(X0), Ns))
     Rstart::Vector{FT} = ((3 .*Xstart./(4*π)).^(1/3))
 
-    droplets = droplets_allocations(ξstart, Rstart, Xstart, collect(1:Ns), zeros(FT, div(Ns, 2)), zeros(FT, div(Ns, 2)))
+    droplets = droplet_attributes(ξstart, Rstart, Xstart)
     return droplets
 end
-
-
 
 
 
@@ -134,7 +161,7 @@ function init_logarithmic(settings::coag_settings{FT})where FT<:AbstractFloat
     multiplicities = pdf_values .* bin_widths_new .* dvdr * (n0*ΔV)
     ξstart::Vector{Int} = floor.(multiplicities.+0.5)
 
-    droplets = droplets_allocations(ξstart, sd_radii, volumes, collect(1:Ns), zeros(FT, div(Ns, 2)), zeros(FT, div(Ns, 2)))
+    droplets = droplet_attributes(ξstart, sd_radii, volumes)
     return droplets
 end
 
@@ -188,7 +215,7 @@ function init_uniform_sd(settings::coag_settings{FT})where FT<:AbstractFloat
     multiplicities = pdf_values .* bin_widths_new .* dvdr * (n0*ΔV)
     ξstart::Vector{Int} = floor.(multiplicities.+0.5)
 
-    droplets = droplets_allocations(ξstart, sd_radii, volumes, collect(1:Ns), zeros(FT, div(Ns, 2)), zeros(FT, div(Ns, 2)))
+    droplets = droplet_attributes(ξstart, sd_radii, volumes)
     return droplets
 end
 
@@ -202,7 +229,7 @@ function init_monodisperse(settings::coag_settings{FT})where FT<:AbstractFloat
     Xstart::Vector{FT} = (4*π/3*R0^3*ones(Ns))
     Rstart::Vector{FT} = (R0*ones(Ns))
 
-    droplets = droplets_allocations(ξstart, Rstart, Xstart, collect(1:Ns), zeros(FT, div(Ns, 2)), zeros(FT, div(Ns, 2)))
+    droplets = droplet_attributes(ξstart, Rstart, Xstart)
     return droplets
 end
 
@@ -262,7 +289,7 @@ end
 # that the call could be generalized in the coalescence_timestep function
 
 
-@inline function hydrodynamic(droplets::droplets_allocations, (j,k)::Tuple{Int,Int}, settings::coag_settings{FT})::FT where FT<:AbstractFloat
+@inline function hydrodynamic(droplets::droplet_attributes, (j,k)::Tuple{Int,Int}, settings::coag_settings{FT})::FT where FT<:AbstractFloat
     Rj, Rk = droplets.R[j], droplets.R[k]
     if settings.hydrodynamic_collision_eff_func == true
         E = collision_efficiency(Rj,Rk)
@@ -284,7 +311,7 @@ end
 
 
 
-@inline function golovin(droplets::droplets_allocations, (j,k)::Tuple{Int,Int}, settings::coag_settings{FT})::FT where FT<:AbstractFloat
+@inline function golovin(droplets::droplet_attributes, (j,k)::Tuple{Int,Int}, settings::coag_settings{FT})::FT where FT<:AbstractFloat
     return settings.golovin_kernel_coeff *(droplets.X[j] + droplets.X[k])# Xsum
 end
 
@@ -298,7 +325,8 @@ end
 
 
 
-function pair_Ps_adaptive!(α::Int,pair::Tuple{Int,Int}, droplets::droplets_allocations, t_max,kernel::Function,settings::coag_settings{FT}) where FT<:AbstractFloat
+function pair_Ps_adaptive!(α::Int,pair::Tuple{Int,Int}, droplets::droplet_attributes, coag_data::coagulation_run,t_max::Vector{FT},
+    t_left::Ref{FT},kernel::Function,settings::coag_settings{FT}) where FT<:AbstractFloat
     if droplets.ξ[pair[1]] < droplets.ξ[pair[2]]
         k = pair[1]
         j = pair[2]
@@ -310,27 +338,32 @@ function pair_Ps_adaptive!(α::Int,pair::Tuple{Int,Int}, droplets::droplets_allo
     ξj, ξk = droplets.ξ[j], droplets.ξ[k]
 
     tmp = ξj * kernel(droplets, pair, settings) * settings.scale / settings.ΔV
-    droplets.pαdt[α] = tmp
-    t_max[α] = (div(ξj, ξk)) / tmp # div gets the floor 
+
+    coag_data.pαdt[α] = tmp
+    if tmp*t_left[] > coag_data.ϕ[α]
+        t_max[α] = (div(ξj, ξk)) / tmp # div gets the floor
+    else
+        t_max[α] = t_left[]
+    end
 
 end
 
-@inline function compute_pαdt!(L::Vector{Tuple{Int,Int}}, droplets::droplets_allocations, kernel::Function,coagsettings::coag_settings{FT}) where FT<:AbstractFloat
-    map(i -> pair_Ps!(i, L[i], droplets, kernel, coagsettings), eachindex(droplets.pαdt))
-    droplets.pαdt .*=  coagsettings.scale * coagsettings.Δt / coagsettings.ΔV
+@inline function compute_pαdt!(L::Vector{Tuple{Int,Int}}, droplets::droplet_attributes,coag_data::coagulation_run,kernel::Function,coagsettings::coag_settings{FT}) where FT<:AbstractFloat
+    map(i -> pair_Ps!(i, L[i], droplets,coag_data,kernel, coagsettings), eachindex(coag_data.pαdt))
+    coag_data.pαdt .*=  coagsettings.scale * coagsettings.Δt / coagsettings.ΔV
 end
 
-@inline function pair_Ps!(α::Int, (j,k)::Tuple{Int,Int}, droplets::droplets_allocations, kernel::Function,coagsettings::coag_settings{FT}) where FT<:AbstractFloat
-    droplets.pαdt[α] = max(droplets.ξ[j], droplets.ξ[k]) * kernel(droplets,(j,k), coagsettings)
+@inline function pair_Ps!(α::Int, (j,k)::Tuple{Int,Int}, droplets::droplet_attributes,coag_data::coagulation_run,kernel::Function,coagsettings::coag_settings{FT}) where FT<:AbstractFloat
+    coag_data.pαdt[α] = max(droplets.ξ[j], droplets.ξ[k]) * kernel(droplets,(j,k), coagsettings)
 end
 
 
-function adaptive_pαdt!(L::Vector{Tuple{Int,Int}},droplets::droplets_allocations,t_left::Ref{FT},kernel::Function, settings::coag_settings{FT}) where FT<:AbstractFloat
+function adaptive_pαdt!(L::Vector{Tuple{Int,Int}},droplets::droplet_attributes,coag_data::coagulation_run,t_left::Ref{FT},kernel::Function, settings::coag_settings{FT}) where FT<:AbstractFloat
     t_max = Vector{FT}(undef, length(L))
-    map(α -> pair_Ps_adaptive!(α,L[α],droplets,t_max,kernel,settings),eachindex(droplets.pαdt))
+    map(α -> pair_Ps_adaptive!(α,L[α],droplets,coag_data,t_max,t_left,kernel,settings),eachindex(coag_data.pαdt))
     Δtm = minimum(t_max)
     Δt = min(Δtm,t_left[])
-    droplets.pαdt .*= Δt
+    coag_data.pαdt .*= Δt
     t_left[] -= Δt
     return nothing
 end
@@ -348,172 +381,101 @@ end
 
 #currently all can be parallelized on CPUs with Threads.@threads
 
-function coalescence_timestep!(run::Union{Serial, Parallel},scheme::none, droplets::droplets_allocations,
-    settings::coag_settings{FT}) where FT<:AbstractFloat
+function coalescence_timestep!(run::Union{Serial, Parallel},scheme::none, droplets::droplet_attributes,
+    coag_data::coagulation_run,settings::coag_settings{FT}) where FT<:AbstractFloat
     Ns::Int = settings.Ns
     
-    shuffle!(droplets.I)
-    L = [(droplets.I[l-1], droplets.I[l]) for l in 2:2:Ns]
+    shuffle!(coag_data.I)
+    L = [(coag_data.I[l-1], coag_data.I[l]) for l in 2:2:Ns]
 
-    compute_pαdt!(L, droplets,settings.kernel, settings)
+    compute_pαdt!(L, droplets,coag_data,settings.kernel, settings)
 
-    rand!(droplets.ϕ)
+    rand!(coag_data.ϕ)
 
-    test_pairs!(run,Ns,L,droplets)
-    # for α::Int in 1:div(Ns, 2)
-        
-    #     if droplets.ϕ[α] >= droplets.pαdt[α]
-    #         continue
-    #     end
-    #     sdm_update!(L[α], α, droplets)
-
-    # end
+    test_pairs!(run,Ns,L,droplets,coag_data)
 
 end 
 
 function coalescence_timestep!(run::Serial,scheme::log_deficit, droplets::deficit_allocations,
-    settings::coag_settings{FT}) where FT<:AbstractFloat
+    coag_data::coagulation_run,settings::coag_settings{FT}) where FT<:AbstractFloat
     Ns::Int = settings.Ns
     
-    shuffle!(droplets.droplets.I)
-    L = [(droplets.droplets.I[l-1], droplets.droplets.I[l]) for l in 2:2:Ns]
+    shuffle!(droplets.coag_data.I)
+    L = [(droplets.coag_data.I[l-1], droplets.coag_data.I[l]) for l in 2:2:Ns]
 
-    compute_pαdt!(L, droplets.droplets,settings.kernel, settings)
+    compute_pαdt!(L, droplets.droplets,droplets.coag_data,settings.kernel, settings)
 
-    rand!(droplets.droplets.ϕ)
+    rand!(droplets.coag_data.ϕ)
 
     lowest_zero = Ref(false)
     for α::Int in 1:div(Ns, 2)
         
-        if droplets.droplets.ϕ[α] >= droplets.droplets.pαdt[α]
+        if droplets.coag_data.ϕ[α] >= droplets.coag_data.pαdt[α]
             continue
         end
-        sdm_update_log_deficit!(L[α], α, droplets.droplets,droplets,lowest_zero)
+        sdm_update_log_deficit!(L[α], α, droplets.droplets,droplets.coag_data,droplets)
 
     end
     if lowest_zero[] == true
-        split_highest_multiplicity!(droplets.droplets.ξ,droplets.droplets.R,droplets.droplets.X)
+        split_highest_multiplicity!(droplets.droplets)
     end
 end 
 
-# function coalescence_timestep!(run::Parallel, scheme::none,droplets::droplets_allocations,
-#     settings::coag_settings{FT}) where FT<:AbstractFloat
 
-#     Ns = settings.Ns
-#     # this is quicker outside of the parallelization....
-#     # probably can change???
-#     shuffle!(droplets.I)
-#     L = [(droplets.I[l-1], droplets.I[l]) for l in 2:2:Ns]
-#     compute_pαdt!(L, droplets,settings.kernel, settings)
-#     rand!(droplets.ϕ)
-
-#     test_pairs!(run,Ns,L,droplets)
-#     # Threads.@threads for α in 1:div(Ns, 2)
-#     #     if droplets.ϕ[α] >= droplets.pαdt[α]
-#     #         continue
-#     #     end
-#     #     sdm_update!(L[α], α, droplets)
-#     # end
-#     return nothing
-# end
-
-
-function coalescence_timestep!(run::Union{Serial, Parallel},scheme::Adaptive,droplets::droplets_allocations{FT},
-    settings::coag_settings{FT}) where FT<:AbstractFloat
+function coalescence_timestep!(run::Union{Serial, Parallel},scheme::Adaptive,droplets::droplet_attributes{FT},
+    coag_data::coagulation_run,settings::coag_settings{FT}) where FT<:AbstractFloat
     Ns = settings.Ns
     t_left = Ref(settings.Δt)
 
     while t_left[] > 0
-        shuffle!(droplets.I)
-        L = [(droplets.I[l-1], droplets.I[l]) for l in 2:2:Ns]
-        rand!(droplets.ϕ)
+        shuffle!(coag_data.I)
+        L = [(coag_data.I[l-1], coag_data.I[l]) for l in 2:2:Ns]
+        rand!(coag_data.ϕ)
 
-        adaptive_pαdt!(L,droplets,t_left,settings.kernel,settings)
+        adaptive_pαdt!(L,droplets,coag_data,t_left,settings.kernel,settings)
 
-        test_pairs!(run,Ns,L,droplets)
-        # for α::Int in 1:div(Ns, 2)
-        
-        #     if droplets.ϕ[α] >= droplets.pαdt[α]
-        #         continue
-        #     end
-        #     sdm_update!(L[α], α, droplets)
-    
-        # end
+        test_pairs!(run,Ns,L,droplets,coag_data)
 
-        # #this takes a lot of searching.. could we put the failure condition somewhere else?
-        # if minimum(droplets.ξ) <= 0
-        #     println("still happening")
-        #     split_highest_multiplicity!(droplets.ξ,droplets.R,droplets.X)
-        # end
     end
     return nothing
 end 
 
-# function coalescence_timestep!(run::Parallel,scheme::Adaptive,droplets::droplets_allocations{FT},
-#     settings::coag_settings{FT}) where FT<:AbstractFloat
-#     Ns = settings.Ns
-#     t_left = Ref(settings.Δt)
-
-#     while t_left[] > 0
-#         shuffle!(droplets.I)
-#         L = [(droplets.I[l-1], droplets.I[l]) for l in 2:2:Ns]
-#         rand!(droplets.ϕ)
-
-#         #surely there is a better way to parallelize this
-#         adaptive_pαdt!(L,droplets,t_left,settings.kernel,settings)
-        
-#         test_pairs(run,Ns,L,droplets)
-#         # Threads.@threads for α in 1:div(Ns, 2)
-#         #     if droplets.ϕ[α] >= droplets.pαdt[α]
-#         #         continue
-#         #     end
-#         #     sdm_update!(L[α], α, droplets)
-#         # end
-
-#         # #this takes a lot of searching.. could we put the failure condition somewhere else?
-#         # if minimum(droplets.ξ) <= 0
-#         #     println("still happening")
-#         #     split_highest_multiplicity!(droplets.ξ,droplets.R,droplets.X)
-#         # end
-#     end
-#     return nothing
-# end 
 
 #----------------------------------------------------------
 # UPDATE
 #----------------------------------------------------------
 
 
-function test_pairs!(scheme::Serial,Ns::Int,L::Vector{Tuple{Int,Int}},droplets::droplets_allocations{FT}) where FT<:AbstractFloat
+function test_pairs!(scheme::Serial,Ns::Int,L::Vector{Tuple{Int,Int}},droplets::droplet_attributes{FT},coag_data::coagulation_run) where FT<:AbstractFloat
     
-    lowest_zero = Ref(false)
+    coag_data.lowest_zero[] = false
     for α::Int in 1:div(Ns, 2)
             
-        if droplets.ϕ[α] >= droplets.pαdt[α]
+        if coag_data.ϕ[α] >= coag_data.pαdt[α]
             continue
         end
-        sdm_update!(L[α], α, droplets,lowest_zero)
+        sdm_update!(L[α], α, droplets,coag_data)
     end
-    if lowest_zero[] == true
-        split_highest_multiplicity!(droplets.ξ,droplets.R,droplets.X)
+    if coag_data.lowest_zero[] == true
+        split_highest_multiplicity!(droplets)
     end
 end
 
-function test_pairs!(scheme::Parallel,Ns::Int,L::Vector{Tuple{Int,Int}},droplets::droplets_allocations{FT}) where FT<:AbstractFloat
+function test_pairs!(scheme::Parallel,Ns::Int,L::Vector{Tuple{Int,Int}},droplets::droplet_attributes{FT},coag_data::coagulation_run) where FT<:AbstractFloat
     
-    lowest_zero = Ref(false)
+    coag_data.lowest_zero[] = false
     Threads.@threads for α in 1:div(Ns, 2)
-        if droplets.ϕ[α] >= droplets.pαdt[α]
+        if coag_data.ϕ[α] >= coag_data.pαdt[α]
             continue
         end
-        sdm_update!(L[α], α, droplets,lowest_zero)
+        sdm_update!(L[α], α, droplets,coag_data)
     end
-    if lowest_zero[] == true
-        split_highest_multiplicity!(droplets.ξ,droplets.R,droplets.X)
+    if coag_data.lowest_zero[] == true
+        split_highest_multiplicity!(droplets)
     end
 end
 
-function sdm_update!(pair::Tuple{Int,Int},α::Int, droplets::droplets_allocations{FT},lowest_zero::Ref{Bool}) where FT<:AbstractFloat
+function sdm_update!(pair::Tuple{Int,Int},α::Int, droplets::droplet_attributes{FT},coag_data::coagulation_run) where FT<:AbstractFloat
 
     if droplets.ξ[pair[1]] < droplets.ξ[pair[2]]
         k = pair[1]
@@ -524,16 +486,21 @@ function sdm_update!(pair::Tuple{Int,Int},α::Int, droplets::droplets_allocation
     end
 
     ξj, ξk = droplets.ξ[j], droplets.ξ[k]
-    pα =  droplets.pαdt[α]
+    pα =  coag_data.pαdt[α]
 
     pα_floor::FT = @fastmath floor(pα)
-    γ::FT  = if droplets.ϕ[α] < pα - pα_floor
+    γ::FT  = if coag_data.ϕ[α] < pα - pα_floor
         pα_floor + 1
     else
         pα_floor
     end
 
-    γ  = min(γ , floor(ξj / ξk))
+    floor_ξj_div_ξk = floor(ξj / ξk)
+    if γ >= floor_ξj_div_ξk
+        coag_data.deficit[] += (γ-floor_ξj_div_ξk)*ξk
+        γ = floor_ξj_div_ξk
+    end
+    # γ  = min(γ , floor(ξj / ξk))
     ξ_j_minus_γ_tilde_ξ_k = ξj - γ  * ξk
 
     if ξ_j_minus_γ_tilde_ξ_k > 0
@@ -552,7 +519,7 @@ function sdm_update!(pair::Tuple{Int,Int},α::Int, droplets::droplets_allocation
         droplets.R[j] = droplets.R[k] = (3/(4*pi)*volume)^(1/3)#R_k_cubed^(1/3)
         droplets.X[k] = droplets.X[j] = volume#4/3 * π * R_k_cubed
         if half_ξ_k == 0
-            lowest_zero[] = true
+            coag_data.lowest_zero[] = true
         end
     else
         println("nooooo")
@@ -560,7 +527,7 @@ function sdm_update!(pair::Tuple{Int,Int},α::Int, droplets::droplets_allocation
     return nothing
 end
 
-function sdm_update_log_deficit!(pair::Tuple{Int,Int},α::Int, droplets::droplets_allocations{FT},droplet_def::deficit_allocations{FT},lowest_zero::Ref{Bool}) where FT<:AbstractFloat
+function sdm_update_log_deficit!(pair::Tuple{Int,Int},α::Int, droplets::droplet_attributes{FT},coag_data::coagulation_run,droplet_def::deficit_allocations{FT}) where FT<:AbstractFloat
 
     if droplets.ξ[pair[1]] < droplets.ξ[pair[2]]
         k = pair[1]
@@ -571,19 +538,19 @@ function sdm_update_log_deficit!(pair::Tuple{Int,Int},α::Int, droplets::droplet
     end
 
     ξj, ξk = droplets.ξ[j], droplets.ξ[k]
-    pα =  droplets.pαdt[α]
+    pα =  coag_data.pαdt[α]
 
     pα_floor::FT = @fastmath floor(pα)
-    γ::FT  = if droplets.ϕ[α] < pα - pα_floor
+    γ::FT  = if coag_data.ϕ[α] < pα - pα_floor
         pα_floor + 1
     else
         pα_floor
     end
 
-
-    if γ >= floor(ξj / ξk)
-        droplet_def.deficit[α]= (γ-floor(ξj / ξk))*ξk
-        γ = floor(ξj / ξk)
+    floor_ξj_div_ξk = floor(ξj / ξk)
+    if γ >= floor_ξj_div_ξk
+        droplet_def.deficit[α]= (γ-floor_ξj_div_ξk)*ξk
+        γ = floor_ξj_div_ξk
     end
     # γ  = min(γ , floor(ξj / ξk))
     ξ_j_minus_γ_tilde_ξ_k = ξj - γ  * ξk
@@ -603,7 +570,7 @@ function sdm_update_log_deficit!(pair::Tuple{Int,Int},α::Int, droplets::droplet
         droplets.R[j] = droplets.R[k] = (3/(4*pi)*volume)^(1/3)#R_k_cubed^(1/3)
         droplets.X[k] = droplets.X[j] = volume#4/3 * π * R_k_cubed
         if half_ξ_k == 0
-            lowest_zero[] = true
+            coag_data.lowest_zero[] = true
         end
     else
         println("nooooo")
@@ -612,23 +579,27 @@ function sdm_update_log_deficit!(pair::Tuple{Int,Int},α::Int, droplets::droplet
 end
 
 
-function split_highest_multiplicity!(ξ,R,X)
-    if maximum(ξ) > 1
-        while (minimum(ξ) <= 0 && maximum(ξ) > 1)
+function split_highest_multiplicity!(droplets::droplet_attributes{FT}) where FT<:AbstractFloat
+    if maximum(droplets.ξ) > 1
+        while (minimum(droplets.ξ) <= 0 && maximum(droplets.ξ) > 1)
             # println("Superdroplet ", argmin(ξ), " has multiplicity of ", ξ[argmin(ξ)])
             # Split superdroplet with highest multiplicity, half goes to argmin(ξ) and half stays
             # Idea from Dziekan and Pawlowska (ACP, 2017) https://doi.org/10.5194/acp-17-13509-2017
-            argmin_i = argmin(ξ)
-            argmax_i = argmax(ξ)
-            ξ[argmin_i] = floor(ξ[argmax_i]/2)
-            R[argmin_i] = R[argmax_i]
-            X[argmin_i] = X[argmax_i]
+            argmin_i = argmin(droplets.ξ)
+            argmax_i = argmax(droplets.ξ)
+            droplets.ξ[argmin_i] = floor(droplets.ξ[argmax_i]/2)
+            droplets.R[argmin_i] = droplets.R[argmax_i]
+            droplets.X[argmin_i] = droplets.X[argmax_i]
             # M[argmin_i] = M[argmax_i]
-            ξ[argmax_i] -= floor(ξ[argmax_i]/2)
+            droplets.ξ[argmax_i] -= floor(droplets.ξ[argmax_i]/2)
         end
-    elseif (maximum(ξ) <= 1)
+    elseif (maximum(droplets.ξ) <= 1)
+
+        println("Highest superdroplet cannot be split")
         #right now, break the model until this situation gets handled
-        error("Highest and Lowest Superdroplet have ξ==0")
+        if (maximum(droplets.ξ) < 1)
+            error("Highest and Lowest Superdroplet have ξ==0")
+        end
 
         #Later:remove superdroplet.. how to handle between cells?
 

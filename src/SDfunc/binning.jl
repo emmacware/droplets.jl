@@ -38,13 +38,13 @@ function error_measure(y,ytrue)
 end
 
 
-function number_density(droplets::droplets_allocations,coagsettings::coag_settings{FT}) where FT<:AbstractFloat
+function number_density(droplets::droplet_attributes,coagsettings::coag_settings{FT}) where FT<:AbstractFloat
     weights = droplets.ξ/coagsettings.ΔV
     return weights
 end
 
 
-function mass_density_lnr(droplets::droplets_allocations,coagsettings::coag_settings{FT}) where FT<:AbstractFloat
+function mass_density_lnr(droplets::droplet_attributes,coagsettings::coag_settings{FT}) where FT<:AbstractFloat
 
     weights = droplets.ξ .* droplets.X
     weights *= 1e3 # convert to mass
@@ -54,7 +54,7 @@ function mass_density_lnr(droplets::droplets_allocations,coagsettings::coag_sett
     return weights
 end
 
-function binning_func(droplets::droplets_allocations, t::FT,
+function binning_func(droplets::droplet_attributes, t::FT,
     runsettings::run_settings{FT},coagsettings::coag_settings{FT}) where FT<:AbstractFloat
 
     weights = runsettings.binning_method(droplets,coagsettings)
