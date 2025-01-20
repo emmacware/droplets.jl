@@ -10,18 +10,18 @@ using Test
     ξ = [Int(2),Int(3)]
     R = [FT(1.0),FT(2.0)]
     X = 3pi/4 .*R.^3
-    I = [Int(1),Int(2)]
-    drops = droplets_allocations(ξ, R, X, I, zeros(FT, div(Ns, 2)), zeros(FT, div(Ns, 2)))
+    drops = droplet_attributes(ξ, R, X)
+    coag_data = coagulation_run{FT}(Ns)
 
     @test golovin(drops, (1,2), coagsettings) == 1500*(X[1]+X[2])
 
-    pair_Ps!(1, (1,2), drops, golovin,coagsettings)
-    @test drops.pαdt[1] == 3*1500*(X[1]+X[2])
+    pair_Ps!(1, (1,2), drops,coag_data, golovin,coagsettings)
+    @test coag_data.pαdt[1] == 3*1500*(X[1]+X[2])
 
-    drops.pαdt[1]=1
-    drops.ϕ[1]=0.5
+    coag_data.pαdt[1]=1
+    coag_data.ϕ[1]=0.5
     lowest_zero = Ref(false)
-    sdm_update!((1,2),1, drops,lowest_zero)
+    sdm_update!((1,2),1, drops,coag_data)
 
     @test drops.ξ == [2,1]
 
