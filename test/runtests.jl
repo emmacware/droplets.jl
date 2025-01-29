@@ -34,3 +34,7 @@ end
 @testset "Coalescence" begin
     include("coalescence_tests.jl")
 end
+
+@testset "Condensation" begin
+    include("condensation_tests.jl")
+end

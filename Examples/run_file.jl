@@ -19,5 +19,5 @@ drops = runsettings.init_method(coagsettings)
 
 bins,times = coag_runtime(1,drops,coagsettings,runsettings)
 plot()
-plot_dsd(bins,runsettings)
+plot_dsd(bins*kg_to_g,runsettings)
 

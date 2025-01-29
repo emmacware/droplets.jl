@@ -20,13 +20,13 @@ using Random
 
     for init_method in init_methods
         @test sum(init_method.ξ) ≈ coagsettings.n0*coagsettings.ΔV rtol = 1e-2
-        @test init_method.X ≈ (init_method.R).^3 .* 4pi/3
+        @test init_method.X ≈ radius_to_volume.(init_method.R)
 
         #This isn't passing for uniform, I feel like thats a problem
         effective_vol = sum(init_method.X) / coagsettings.Ns
-        effective_radius = (effective_vol * 3 / 4 / pi)^(1/3)
+        effective_radius = volume_to_radius(effective_vol)
         @test effective_radius ≈ coagsettings.R0 rtol = 1e-2 
-
+    
     end
 
     @test all(==(ξ_const.ξ[1]), ξ_const.ξ)
@@ -91,7 +91,7 @@ using Random
     # multiple collisions, split highest multiplicity, lowest_zero
     two_drops_coagsettings = coag_settings{FT}(Ns = 2)
     R = [FT(1.5e-6), FT(1.5e-6)]
-    X = 4pi/3 .* R.^3
+    X = radius_to_volume.(R)
     ξ = [2,1]
     two_drops = droplet_attributes{FT}(ξ.+0,R.+0,X.+0)
     two_drops_coag_data = coagulation_run{FT}(two_drops_coagsettings.Ns)
@@ -102,11 +102,11 @@ using Random
     @test two_drops_coag_data.lowest_zero[] == true
     @test two_drops.ξ == [0,1]
     @test two_drops.X[1] == two_drops.X[2] == 2*X[1]+X[2]
-    @test two_drops.R == (3 .*X*3/4/pi).^(1/3)
+    @test two_drops.R == volume_to_radius.(two_drops.X)
 
-   # test_pairs ξ_j_minus_γ_tilde_ξ_k > 0
+    # test_pairs ξ_j_minus_γ_tilde_ξ_k > 0
     two_drops.ξ .= [6,2]
-    two_drops.R .= R
+    two_drops.R .= [FT(1.5e-6), FT(1.5e-6)]
     two_drops.X .= X
     two_drops_coag_data.ϕ[1] = 0.5
     two_drops_coag_data.pαdt[1] = 2
@@ -114,24 +114,41 @@ using Random
     @test two_drops.ξ == [2,2]
     @test two_drops.X[2] == 2*X[1]+X[2]
     @test two_drops.X[1] == X[1]
-    @test two_drops.R ≈ (two_drops.X*3/4/pi).^(1/3)
+    @test two_drops.R ≈ volume_to_radius.(two_drops.X)
 
     # test deficit
-    two_drops.ξ .= [8,4]
-    two_drops.R .= R
-    two_drops.X .= X
-    two_drops_coag_data.ϕ[1] = 0.5
-    two_drops_coag_data.pαdt[1] = 3
-    test_pairs!(Serial(),2,[(1,2)],two_drops,two_drops_coag_data)
-    @test two_drops_coag_data.deficit[] == 4
+    begin
+        # arrange
+        two_drops.ξ .= [8,4]
+        two_drops.R .= [FT(1.5e-6), FT(1.5e-6)]
+        two_drops.X .= X
+        two_drops_coag_data.ϕ[1] = 0.5
+        two_drops_coag_data.pαdt[1] = 3
+
+        # act
+        test_pairs!(Serial(),2,[(1,2)],two_drops,two_drops_coag_data)
+
+        # assert
+        @test two_drops_coag_data.deficit[] == 4
+    end
+
     two_drops_coag_data.deficit[] = 0
+
+    #test split_highest_multiplicity
+    ξ = [0,1,2,4]
+    R = [FT(1.5e-6), FT(1.5e-6), FT(1.5e-6), FT(1.5e-6)]
+    X = radius_to_volume.(R)
+    four_drops = droplet_attributes{FT}(ξ.+0,R.+0,X.+0)
+    split_highest_multiplicity!(four_drops)
+    @test four_drops.ξ == [2,1,2,2]
+    @test four_drops.X[1] == four_drops.X[4] == X[4]
 
 
     # pair_Ps
     L = [(1,2),(3,4)]
     ξ = [2,3,4,5]
     R = [1.5e-6,1.5e-6,1.5e-6,1.5e-6]
-    X = 4pi/3 .* R.^3
+    X = radius_to_volume.(R)
     drops = droplet_attributes{FT}(ξ.+0,R.+0,X.+0)
     coag_data = coagulation_run{FT}(4)
     coagsettings = coag_settings{FT}(Ns = 4)
@@ -141,7 +158,7 @@ using Random
 
     ξ = [2e9,3e10,4e9,5e10,(7e13-1),7e13]
     R = [3e-6,3e-6,3e-6,3e-6,3e-5,3e-5]
-    X = 4pi/3 .* R.^3
+    X = radius_to_volume.(R)
     drops = droplet_attributes{FT}(ξ.+0,R.+0,X.+0)
     coag_data = coagulation_run{FT}(6)
     coagsettings = coag_settings{FT}(Ns = 6)

@@ -46,12 +46,11 @@ end
 
 function mass_density_lnr(droplets::droplet_attributes,coagsettings::coag_settings{FT}) where FT<:AbstractFloat
 
-    weights = droplets.ξ .* droplets.X
-    weights *= 1e3 # convert to mass
-    weights *= 1e3 # convert from kg to grams
-    weights /= coagsettings.ΔV 
+    tot_vol = droplets.ξ .* droplets.X
+    weights_kilograms = tot_vol*constants.ρl # convert to mass
+    kg_per_vol = weights_kilograms/coagsettings.ΔV 
 
-    return weights
+    return kg_per_vol
 end
 
 function binning_func(droplets::droplet_attributes, t::FT,

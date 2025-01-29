@@ -129,17 +129,32 @@ function dXkohler_function_of_radius_activated(R,T,Senv,timestep)
     return dX
 end
 
-function θcondenseupdate!(Sv,θ,Δtg,P,P0)
-    Exner = (P./P0).^(constants.Rd/constants.Cp)
-    θ = θ .+ -Δtg*constants.L.*Sv./(constants.Cp.*Exner)
-    T = θ.*(P./P0).^(constants.Rd/constants.Cp)
-    return θ,T
+
+function dq_liq_cond_activated(R,M,m,T,Senv,timestep,ρ_air)
+    dX = dXkohler_function_of_radius(R,M,m,T,Senv,timestep)
+    dql = sum(dX.*ξ.* constants.ρl / ρ_air) #/per volume?
+    return dql
 end
 
-function qvcondenseupdate!(Sv, qvarray, P,T,Δtg)
-    qvarray = qvarray .+ Δtg.*Sv
-    ρd =  P./(constants.Rd.*T)
-    ρ = ρd ./(1 .- qvarray) 
-    return qvarray,ρ
+function dq_liq_cond_activated(R,T,Senv,timestep,ρ_air)
+    dX = dXkohler_function_of_radius_activated(R,T,Senv,timestep)
+    dql = sum(dX.*ξ.* constants.ρl / ρ_air) #/per volume?
+    return dql
 end
+
+
+
+# function θcondenseupdate!(Sv,θ,Δtg,P,P0)
+#     Exner = (P./P0).^(constants.Rd/constants.Cp)
+#     θ = θ .+ -Δtg*constants.L.*Sv./(constants.Cp.*Exner)
+#     T = θ.*(P./P0).^(constants.Rd/constants.Cp)
+#     return θ,T
+# end
+
+# function qvcondenseupdate!(Sv, qvarray, P,T,Δtg)
+#     qvarray = qvarray .+ Δtg.*Sv
+#     ρd =  P./(constants.Rd.*T)
+#     ρ = ρd ./(1 .- qvarray) 
+#     return qvarray,ρ
+# end
 

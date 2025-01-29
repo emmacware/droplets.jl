@@ -23,7 +23,7 @@ n0 = Integer(2^23) # initial number density of droplets, 1/m^3
 Δt = Float64(1.0) # seconds
 ΔV = Float64(10^6) # m^3 box volume
 R0 = Float64(30.531e-6) # m
-X0 = Float64(4*π/3*R0^3) # m^3
+X0 = radius_to_volume(R0)#Float64(4*π/3*R0^3) # m^3
 Random.seed!(30)
 kernel = golovin #hydrodynamic,golovin -- for Julia version, edit PySDM kernel in Test Environment
 
@@ -38,12 +38,11 @@ attributes["volume"], attributes["multiplicity"] = ConstantMultiplicity(spectrum
 attributes["multiplicity"] = round.(attributes["multiplicity"])
 
 # attributes["multiplicity"] .= 2.56e8
-
 #-------------------------
 # Copy for Julia arguments
 X_start = attributes["volume"]
 ξ_start = Int.(attributes["multiplicity"])
-R_start = (3 * X_start / (4 * pi)).^(1/3)
+R_start = volume_to_radius.(X_start)#(3 * X_start / (4 * pi)).^(1/3)
 
 
 #-------------------------
@@ -75,13 +74,13 @@ plot()
 #analytic solution
 
 asol = analytic_soln([0.001,1200,2400,3600],radius_bins_edges,n0,X0,ΔV, 1500)
-plot_dsd(asol,runsettings,color="red",label=["Analytic Soln" false false false],legend=true)
+plot_dsd(asol*kg_to_g,runsettings,color="red",label=["Analytic Soln" false false false],legend=true)
 
 #julia
 drops = droplet_attributes(ξ_start, R_start, X_start)
 
 bins,times = coag_runtime(1,drops,coagsettings,runsettings)
-plot2 = plot_dsd(bins,runsettings,color="black",label=["Droplets.jl" false false false],legend=true)
+plot2 = plot_dsd(bins*kg_to_g,runsettings,color="black",label=["Droplets.jl" false false false],legend=true)
 
 #pysdm
 pytime = @elapsed begin
@@ -90,7 +89,7 @@ for step = 0:1200:3600
     particulator.run(step - particulator.n_steps)
 
     scope = 2
-    water = copy(particulator.products["dv/dlnr"].get()[:] * rho_w / si.g)
+    water = copy(particulator.products["dv/dlnr"].get()[:] * rho_w)
 
     if step != 0
     new_water = copy(water)
@@ -113,7 +112,7 @@ for step = 0:1200:3600
     end
 
     plot2 = plot!(
-        (radius_bins_edges[1:end-1]+radius_bins_edges[2:end])/2 / si.um, water,
+        (radius_bins_edges[1:end-1]+radius_bins_edges[2:end])/2 / si.um, water*kg_to_g,
         lc=:dodgerblue,xaxis=:log, label= label) #"t = $step s")   
 end
 end

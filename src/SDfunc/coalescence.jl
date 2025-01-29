@@ -100,10 +100,9 @@ function init_ξ_const(settings::coag_settings{FT}) where FT<:AbstractFloat
     n0 = settings.n0
     R0 = settings.R0
     ξstart::Vector{Int} = (div(n0*ΔV,Ns)*ones(Ns))
-    # R0 = Float64(30.531e-6) # meters
-    X0 = Float64(4*π/3*R0^3) # initial volume m3    
+    X0 = radius_to_volume(R0)# initial volume m3    
     Xstart::Vector{FT} = (rand(Exponential(X0), Ns))
-    Rstart::Vector{FT} = ((3 .*Xstart./(4*π)).^(1/3))
+    Rstart::Vector{FT} = volume_to_radius.(Xstart)
 
     droplets = droplet_attributes(ξstart, Rstart, Xstart)
     return droplets
@@ -119,15 +118,14 @@ function init_logarithmic(settings::coag_settings{FT})where FT<:AbstractFloat
     R_min = settings.R_min
     R_max = settings.R_max
 
-    X0 = (4/3) * π * R0^3
+    X0 = radius_to_volume(R0)
     exp_dist = Exponential(X0)
     boundaries_found = false
     while boundaries_found == false
         radius_bins = 10 .^ range(log10(R_min), log10(R_max), length=Ns+1)
         # Calculate the volume for each bin
-        volumes = (4/3) * π .* radius_bins.^3
-        vmin = (4/3) * π .* radius_bins[1]^3
-        vmax = (4/3) * π .* radius_bins[end-1]^3
+        vmin = radius_to_volume(radius_bins[1])
+        vmax = radius_to_volume(radius_bins[end-1])
         
         pdf_min = pdf(exp_dist, vmin)
         pdf_max = pdf(exp_dist, vmax)
@@ -154,7 +152,7 @@ function init_logarithmic(settings::coag_settings{FT})where FT<:AbstractFloat
 
     radius_bins_new = 10 .^ range(log10(R_min), log10(R_max), length=Ns+1)
     sd_radii::Vector{FT} = [rand(Uniform(radius_bins_new[i], radius_bins_new[i+1])) for i in 1:Ns]
-    volumes::Vector{FT} = (4/3) * π .* sd_radii.^3
+    volumes::Vector{FT} = radius_to_volume.(sd_radii)
     pdf_values = pdf.(exp_dist, volumes)
     bin_widths_new = diff(radius_bins_new)
     dvdr = 4 * π .* sd_radii.^2
@@ -173,15 +171,14 @@ function init_uniform_sd(settings::coag_settings{FT})where FT<:AbstractFloat
     R_min = settings.R_min
     R_max = settings.R_max
 
-    X0 = (4/3) * π * R0^3
+    X0 = radius_to_volume(R0)
     exp_dist = Exponential(X0)
     boundaries_found = false
     while boundaries_found == false
         radius_bins = range(R_min, R_max, length=Ns+1)
         # Calculate the volume for each bin
-        # volumes = (4/3) * π .* radius_bins.^3
-        vmin = (4/3) * π * radius_bins[1]^3
-        vmax = (4/3) * π * radius_bins[end-1]^3
+        vmin = radius_to_volume.(radius_bins[1])
+        vmax = radius_to_volume.(radius_bins[end-1])
         
         pdf_min = pdf(exp_dist, vmin)
         pdf_max = pdf(exp_dist, vmax)
@@ -208,7 +205,7 @@ function init_uniform_sd(settings::coag_settings{FT})where FT<:AbstractFloat
 
     radius_bins_new = range(R_min, R_max, length=Ns+1)
     sd_radii::Vector{FT} = [rand(Uniform(radius_bins_new[i], radius_bins_new[i+1])) for i in 1:Ns]
-    volumes::Vector{FT} = (4/3) * π .* sd_radii.^3
+    volumes::Vector{FT} = radius_to_volume.(sd_radii)
     pdf_values = pdf.(exp_dist, volumes)
     bin_widths_new = diff(radius_bins_new)
     dvdr = 4 * π .* sd_radii.^2
@@ -226,8 +223,8 @@ function init_monodisperse(settings::coag_settings{FT})where FT<:AbstractFloat
     n0 = settings.n0
     R0 = settings.R0
     ξstart::Vector{Int} = (div(n0*ΔV,Ns)*ones(Ns))
-    Xstart::Vector{FT} = (4*π/3*R0^3*ones(Ns))
     Rstart::Vector{FT} = (R0*ones(Ns))
+    Xstart::Vector{FT} = radius_to_volume.(Rstart)
 
     droplets = droplet_attributes(ξstart, Rstart, Xstart)
     return droplets
@@ -505,19 +502,17 @@ function sdm_update!(pair::Tuple{Int,Int},α::Int, droplets::droplet_attributes{
 
     if ξ_j_minus_γ_tilde_ξ_k > 0
         droplets.ξ[j] = ξ_j_minus_γ_tilde_ξ_k
-        # R_k_cubed = γ * droplets.R[j]^3 + droplets.R[k]^3
         volume = γ * droplets.X[j] + droplets.X[k]
-        droplets.R[k] = (3/(4*pi)*volume)^(1/3)# R_k_cubed^(1/3) 
-        droplets.X[k] = volume #γ * droplets.X[j] + droplets.X[k]#4/3 * π * R_k_cubed
+        droplets.R[k] = volume_to_radius(volume)
+        droplets.X[k] = volume 
     elseif ξ_j_minus_γ_tilde_ξ_k == 0
         half_ξ_k = floor(ξk / 2)
         droplets.ξ[j] = half_ξ_k
         droplets.ξ[k] -= half_ξ_k
-        
-        # R_k_cubed = γ* droplets.R[j]^3 + droplets.R[k]^3
+
         volume = γ *droplets.X[j] + droplets.X[k]
-        droplets.R[j] = droplets.R[k] = (3/(4*pi)*volume)^(1/3)#R_k_cubed^(1/3)
-        droplets.X[k] = droplets.X[j] = volume#4/3 * π * R_k_cubed
+        droplets.R[j] = droplets.R[k] = volume_to_radius(volume)
+        droplets.X[k] = droplets.X[j] = volume
         if half_ξ_k == 0
             coag_data.lowest_zero[] = true
         end
@@ -557,18 +552,16 @@ function sdm_update_log_deficit!(pair::Tuple{Int,Int},α::Int, droplets::droplet
 
     if ξ_j_minus_γ_tilde_ξ_k > 0
         droplets.ξ[j] = ξ_j_minus_γ_tilde_ξ_k
-        # R_k_cubed = γ * droplets.R[j]^3 + droplets.R[k]^3
         volume = γ * droplets.X[j] + droplets.X[k]
-        droplets.R[k] = (3/(4*pi)*volume)^(1/3)# R_k_cubed^(1/3) 
-        droplets.X[k] = volume #γ * droplets.X[j] + droplets.X[k]#4/3 * π * R_k_cubed
+        droplets.R[k] = volume_to_radius(volume)
+        droplets.X[k] = volume 
     elseif ξ_j_minus_γ_tilde_ξ_k == 0
         half_ξ_k = floor(ξk / 2)
         droplets.ξ[j] = half_ξ_k
         droplets.ξ[k] -= half_ξ_k
-        # R_k_cubed = γ* droplets.R[j]^3 + droplets.R[k]^3
         volume = γ *droplets.X[j] + droplets.X[k]
-        droplets.R[j] = droplets.R[k] = (3/(4*pi)*volume)^(1/3)#R_k_cubed^(1/3)
-        droplets.X[k] = droplets.X[j] = volume#4/3 * π * R_k_cubed
+        droplets.R[j] = droplets.R[k] = volume_to_radius(volume)
+        droplets.X[k] = droplets.X[j] = volume
         if half_ξ_k == 0
             coag_data.lowest_zero[] = true
         end
