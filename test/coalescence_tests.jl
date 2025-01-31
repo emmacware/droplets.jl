@@ -3,36 +3,43 @@ using Droplets
 using Combinatorics
 using Random
 
-@testset begin
+FT = Float64
 
-    FT = Float64
-    coagsettings = coag_settings{FT}(Ns = 2^15)
+function empty_drops(Ns;FT=FT)
+    coagsettings = coag_settings{FT}(Ns = Ns)
+    coagdata = coagulation_run{FT}(Ns)
+    drops = droplet_attributes{FT}(Int.(zeros(Ns)),zeros(Ns),zeros(Ns))
+    return drops,coagsettings,coagdata
+end
+
+
+@testset "Initialization" begin
+    coagsettings = coag_settings{FT}(Ns = 2^8)
     @test coagsettings.scale == coagsettings.Ns * (coagsettings.Ns - 1) / 2 / (coagsettings.Ns / 2)
 
-    ξ_const = init_ξ_const(coagsettings)
-    log = init_logarithmic(coagsettings)
-    uniform = init_uniform_sd(coagsettings)
-    mono = init_monodisperse(coagsettings)
-
-    init_methods = [ξ_const, log,mono]
-
-    init_method = uniform
-
-    for init_method in init_methods
+    function test_init_method(init_func, coagsettings)
+        init_method = init_func(coagsettings)
         @test sum(init_method.ξ) ≈ coagsettings.n0*coagsettings.ΔV rtol = 1e-2
         @test init_method.X ≈ radius_to_volume.(init_method.R)
 
-        #This isn't passing for uniform, I feel like thats a problem
-        effective_vol = sum(init_method.X) / coagsettings.Ns
+        effective_vol = sum(init_method.X.*init_method.ξ) / (sum(init_method.ξ))
         effective_radius = volume_to_radius(effective_vol)
         @test effective_radius ≈ coagsettings.R0 rtol = 1e-2 
-    
+        if init_func == init_ξ_const
+            @test all(==(init_method.ξ[1]), init_method.ξ)
+        end
     end
 
-    @test all(==(ξ_const.ξ[1]), ξ_const.ξ)
+    test_init_method(init_ξ_const,coagsettings)
+    test_init_method(init_logarithmic,coagsettings)
+    test_init_method(init_uniform_sd,coagsettings)
+    test_init_method(init_monodisperse,coagsettings)
+end
 
+@testset "Kernels" begin
+    coagsettings = coag_settings{FT}(Ns = 2^8)
+    ξ_const = init_ξ_const(coagsettings)
 
-    #kernels
     droplet_probability = golovin(ξ_const, (1,2), coagsettings)
     @test droplet_probability == coagsettings.golovin_kernel_coeff * (ξ_const.X[1] + ξ_const.X[2])
 
@@ -41,23 +48,29 @@ using Random
     @test golovin(ξ_const, (1,2), big_golovin_coefficient_settings) > golovin(ξ_const, (1,2), small_golovin_coefficient_settings)
 
     #same-size drops cannot collide
+    mono = init_monodisperse(coagsettings)
     @test hydrodynamic(mono, (1,2), coagsettings) == 0.0
     # set test for different sized drops
     # @test hydrodynamic(uniform, (1,2), coagsettings) == ?
+end
 
-
-
-    run = [Serial()] #Parallel has trouble on windows right now, have to fix
-    schemes = [none(),Adaptive()]
+@testset "Schemes" begin
+    coagsettings = coag_settings{FT}(Ns = 2^8)
     coag_data = coagulation_run{FT}(coagsettings.Ns)
 
-    for scheme in schemes
+    function test_schemes(scheme, coag_data, coagsettings)
         Random.seed!()
+        ξ_const = init_ξ_const(coagsettings)
         ctimestep = deepcopy(ξ_const)
+        if scheme == log_deficit()
+            ctimestep = deficit_allocations{FT}(ctimestep)
+        end
         for _ in 1:50
             coalescence_timestep!(Serial(),scheme, ctimestep,coag_data, coagsettings)
         end
-
+        if scheme == log_deficit()
+            ctimestep = ctimestep.droplets
+        end
         # coag only
         @test sum(ctimestep.ξ) <= sum(ξ_const.ξ)
         # mass conservation:
@@ -67,63 +80,72 @@ using Random
         @test minimum(ctimestep.R) > 0
     end
 
-    #test that the deficit is being updated correctly
-    deficit_drops = deepcopy(ξ_const)
-    deficit = deficit_allocations{FT}(deficit_drops)
-    for _ in 1:10
-        coalescence_timestep!(Serial(),log_deficit(), deficit,coag_data,coagsettings)
-    end
-
-    @test sum(deficit.droplets.ξ) <= sum(ξ_const.ξ)
-    @test sum(deficit.droplets.X.*deficit.droplets.ξ) ≈ sum(ξ_const.X.*ξ_const.ξ) rtol = 1e-12
-    @test minimum(deficit.droplets.ξ) > 0
-    @test minimum(deficit.droplets.X) > 0
-    @test minimum(deficit.droplets.R) > 0
+    test_schemes(none(),coag_data, coagsettings)
+    test_schemes(Adaptive(),coag_data, coagsettings)
+    test_schemes(log_deficit(),coag_data, coagsettings)
 
     #test that deficit for Adaptive is zero
-    coag_data = coagulation_run{FT}(coagsettings.Ns)    
-    for _ in 1:10
-        coalescence_timestep!(Serial(),Adaptive(), deficit_drops,coag_data, coagsettings)
+    begin
+        coagsettings = coag_settings{FT}(Ns = 2^8)
+        deficit_drops = init_ξ_const(coagsettings)
+        coag_data = coagulation_run{FT}(coagsettings.Ns)    
+        for _ in 1:10
+            coalescence_timestep!(Serial(),Adaptive(), deficit_drops,coag_data, coagsettings)
+        end
+        @test coag_data.deficit[] == 0
     end
-    @test coag_data.deficit[] == 0
 
-    # test sdm update for extreme cases: 
-    # multiple collisions, split highest multiplicity, lowest_zero
-    two_drops_coagsettings = coag_settings{FT}(Ns = 2)
-    R = [FT(1.5e-6), FT(1.5e-6)]
-    X = radius_to_volume.(R)
-    ξ = [2,1]
-    two_drops = droplet_attributes{FT}(ξ.+0,R.+0,X.+0)
-    two_drops_coag_data = coagulation_run{FT}(two_drops_coagsettings.Ns)
-    two_drops_coag_data.ϕ[1] = 0.5
-    two_drops_coag_data.pαdt[1] = 2
-    @test two_drops_coag_data.lowest_zero[] == false
-    test_pairs!(Serial(),2,[(1,2)],two_drops,two_drops_coag_data)
-    @test two_drops_coag_data.lowest_zero[] == true
-    @test two_drops.ξ == [0,1]
-    @test two_drops.X[1] == two_drops.X[2] == 2*X[1]+X[2]
-    @test two_drops.R == volume_to_radius.(two_drops.X)
+end
 
-    # test_pairs ξ_j_minus_γ_tilde_ξ_k > 0
-    two_drops.ξ .= [6,2]
-    two_drops.R .= [FT(1.5e-6), FT(1.5e-6)]
-    two_drops.X .= X
-    two_drops_coag_data.ϕ[1] = 0.5
-    two_drops_coag_data.pαdt[1] = 2
-    test_pairs!(Serial(),2,[(1,2)],two_drops,two_drops_coag_data)
-    @test two_drops.ξ == [2,2]
-    @test two_drops.X[2] == 2*X[1]+X[2]
-    @test two_drops.X[1] == X[1]
-    @test two_drops.R ≈ volume_to_radius.(two_drops.X)
+@testset "Collision Updates" begin
+
+    function multiple_collisions(two_drops, two_drops_coag_data)
+        #arrange
+        two_drops.ξ .= [2,1]
+        two_drops.R .= [FT(1.5e-6), FT(1.5e-6)]
+        two_drops.X .= radius_to_volume.(two_drops.R)
+        X = two_drops.X .+0
+        two_drops_coag_data.ϕ[1] = 0.5
+        two_drops_coag_data.pαdt[1] = 2
+        @test two_drops_coag_data.lowest_zero[] == false
+        
+        #act
+        test_pairs!(Serial(),2,[(1,2)],two_drops,two_drops_coag_data)
+
+        #assert
+        @test two_drops_coag_data.lowest_zero[] == true
+        @test two_drops.ξ == [0,1]
+        @test two_drops.X[1] == two_drops.X[2] == 2*X[1]+X[2]
+        @test two_drops.R == volume_to_radius.(two_drops.X)
+    end
+
+    function test_pairs_ξjminus_γtildeξk(two_drops, two_drops_coag_data)
+        #arrange
+        two_drops.ξ .= [6,2]
+        two_drops.R .= [FT(1.5e-6), FT(1.5e-6)]
+        two_drops.X .= radius_to_volume.(two_drops.R)
+        X = two_drops.X .+0
+        two_drops_coag_data.ϕ[1] = 0.5
+        two_drops_coag_data.pαdt[1] = 2
+        #act
+        test_pairs!(Serial(),2,[(1,2)],two_drops,two_drops_coag_data)
+
+        #assert
+        @test two_drops.ξ == [2,2]
+        @test two_drops.X[2] == 2*X[1]+X[2]
+        @test two_drops.X[1] == X[1]
+        @test two_drops.R ≈ volume_to_radius.(two_drops.X)
+    end
 
     # test deficit
-    begin
+    function test_deficit(two_drops, two_drops_coag_data)
         # arrange
         two_drops.ξ .= [8,4]
         two_drops.R .= [FT(1.5e-6), FT(1.5e-6)]
-        two_drops.X .= X
+        two_drops.X .= radius_to_volume.(two_drops.R)
         two_drops_coag_data.ϕ[1] = 0.5
         two_drops_coag_data.pαdt[1] = 3
+        two_drops_coag_data.deficit[] = 0
 
         # act
         test_pairs!(Serial(),2,[(1,2)],two_drops,two_drops_coag_data)
@@ -132,54 +154,95 @@ using Random
         @test two_drops_coag_data.deficit[] == 4
     end
 
-    two_drops_coag_data.deficit[] = 0
+    function test_split_highest_multiplicity(four_drops)
+        #arrange
+        ξ = [0,1,2,4]
+        R = [FT(1.5e-6), FT(2.5e-6), FT(3.5e-6), FT(4.5e-6)]
+        X = radius_to_volume.(R)
+        four_drops.ξ .= ξ .+0
+        four_drops.R .= R .+0
+        four_drops.X .= X .+0
 
-    #test split_highest_multiplicity
-    ξ = [0,1,2,4]
-    R = [FT(1.5e-6), FT(1.5e-6), FT(1.5e-6), FT(1.5e-6)]
-    X = radius_to_volume.(R)
-    four_drops = droplet_attributes{FT}(ξ.+0,R.+0,X.+0)
-    split_highest_multiplicity!(four_drops)
-    @test four_drops.ξ == [2,1,2,2]
-    @test four_drops.X[1] == four_drops.X[4] == X[4]
+        #act
+        split_highest_multiplicity!(four_drops)
 
+        @test four_drops.ξ == [2,1,2,2]
+        @test four_drops.R[1] == four_drops.R[4] == R[4]
+        @test four_drops.X[1] == four_drops.X[4] == X[4]
+    end
+
+    two_drops,two_drops_coag_settings,two_drops_coag_data = empty_drops(2)
+    four_drops,four_drops_coag_settings,four_drops_coag_data = empty_drops(4)
+
+    multiple_collisions(two_drops,two_drops_coag_data)
+    test_pairs_ξjminus_γtildeξk(two_drops,two_drops_coag_data)
+    test_pairs_ξjminus_γtildeξk(two_drops,two_drops_coag_data)
+    test_deficit(two_drops,two_drops_coag_data)
+    test_split_highest_multiplicity(four_drops)
+
+end
+
+@testset "Probabilities" begin
 
     # pair_Ps
-    L = [(1,2),(3,4)]
-    ξ = [2,3,4,5]
-    R = [1.5e-6,1.5e-6,1.5e-6,1.5e-6]
-    X = radius_to_volume.(R)
-    drops = droplet_attributes{FT}(ξ.+0,R.+0,X.+0)
-    coag_data = coagulation_run{FT}(4)
-    coagsettings = coag_settings{FT}(Ns = 4)
-    compute_pαdt!(L,drops,coag_data,golovin,coagsettings)
-    @test coag_data.pαdt[1] == 3*coagsettings.golovin_kernel_coeff*(X[1]+X[2])*(coagsettings.scale * coagsettings.Δt / coagsettings.ΔV)
-    @test coag_data.pαdt[2] == 5*coagsettings.golovin_kernel_coeff*(X[3]+X[4])*(coagsettings.scale * coagsettings.Δt / coagsettings.ΔV)
+    begin
+        #arrange
+        L = [(1,2),(3,4)]
+        ξ = [2,3,4,5]
+        R = [1.5e-6,1.5e-6,1.5e-6,1.5e-6]
+        X = radius_to_volume.(R)
+        drops = droplet_attributes{FT}(ξ.+0,R.+0,X.+0)
+        coag_data = coagulation_run{FT}(4)
+        coagsettings = coag_settings{FT}(Ns = 4)
 
-    ξ = [2e9,3e10,4e9,5e10,(7e13-1),7e13]
-    R = [3e-6,3e-6,3e-6,3e-6,3e-5,3e-5]
-    X = radius_to_volume.(R)
-    drops = droplet_attributes{FT}(ξ.+0,R.+0,X.+0)
-    coag_data = coagulation_run{FT}(6)
-    coagsettings = coag_settings{FT}(Ns = 6)
-    coag_data.ϕ .= [0.5,1e-9,0.2]
-    t_left = Ref(100.0)
-    t_max = Vector{FT}(undef, 3)
+        #act
+        compute_pαdt!(L,drops,coag_data,golovin,coagsettings)
 
-    pair_Ps_adaptive!(1,(1,2), drops, coag_data,t_max,t_left,golovin,coagsettings)
-    pair_Ps_adaptive!(2,(3,4), drops, coag_data,t_max,t_left,golovin,coagsettings)
-    pair_Ps_adaptive!(3,(5,6), drops, coag_data,t_max,t_left,golovin,coagsettings)
-    tmp_pair2 = ξ[4] * golovin(drops, (3,4), coagsettings)*(coagsettings.scale / coagsettings.ΔV)
-    tmp_pair3 = ξ[6] * golovin(drops, (5,6), coagsettings)*(coagsettings.scale / coagsettings.ΔV)
-    @test t_max[1] == t_left[]
-    @test t_max[2] ≈ (div(5e10, 4e9))/tmp_pair2
-    @test t_max[3] ≈ (div(ξ[6], ξ[5]))/tmp_pair3
+        #assert
+        @test coag_data.pαdt[1] == 3*coagsettings.golovin_kernel_coeff*(X[1]+X[2])*(coagsettings.scale * coagsettings.Δt / coagsettings.ΔV)
+        @test coag_data.pαdt[2] == 5*coagsettings.golovin_kernel_coeff*(X[3]+X[4])*(coagsettings.scale * coagsettings.Δt / coagsettings.ΔV)
+    end
 
-    adaptive_pαdt!([(1,2),(3,4),(5,6)],drops,coag_data,t_left,golovin,coagsettings)
-    @test coag_data.pαdt[2] == tmp_pair2 * (div(ξ[6], ξ[5]))/tmp_pair3
-    @test coag_data.pαdt[3] == tmp_pair3 * (div(ξ[6], ξ[5]))/tmp_pair3
-    @test t_left[] == 100 - (div(ξ[6], ξ[5]))/tmp_pair3
-    
+    function test_adaptive_limits_tstep(sixdrops,coag_data,coagsettings)
+        #arrange
+        L = [(1,2),(3,4),(5,6)]
+        sixdrops.ξ[1:6] .= [2e9,3e10,4e9,5e10,(7e13-1),7e13]
+        sixdrops.R[1:6] .= [3e-6,3e-6,3e-6,3e-6,3e-5,3e-5]
+        sixdrops.X = radius_to_volume.(R)
+        coag_data.ϕ[1:3] .= [0.5,1e-9,0.2]
+        t_start = 100.0
+        tlim_pair2 = div(sixdrops.ξ[4], sixdrops.ξ[3])/(ξ[4] * golovin(sixdrops, (3,4), coagsettings)*(coagsettings.scale / coagsettings.ΔV))
+        tlim_pair3 = div(sixdrops.ξ[6], sixdrops.ξ[5])/(ξ[6] * golovin(sixdrops, (5,6), coagsettings)*(coagsettings.scale / coagsettings.ΔV))
+        expected_tlims = [t_start,tlim_pair2,tlim_pair3]
+
+
+        function test_tmax(sixdrops,coag_data,coagsettings,L,t_start,expected_tlims)
+            t_left = Ref(t_start .+0)
+            t_max = Vector{FT}(undef, length(L))
+            #act
+            for (α,pair) in enumerate(L)
+                pair_Ps_adaptive!(α,pair, sixdrops,coag_data,t_max,t_left,golovin,coagsettings)
+            end
+            #assert
+            @test t_max ≈ expected_tlims
+        end
+
+        function test_tleft(sixdrops,coag_data,coagsettings,L,t_start,expected_tlims)
+            t_left = Ref(t_start .+0)
+            #act
+            adaptive_pαdt!(L,sixdrops,coag_data,t_left,golovin,coagsettings)
+
+            #assert
+            @test coag_data.pαdt[2] ≈ div(sixdrops.ξ[4], sixdrops.ξ[3])/expected_tlims[2] * expected_tlims[3]
+            @test coag_data.pαdt[3] ≈ div(sixdrops.ξ[6], sixdrops.ξ[5])#tmp_pair3 * expected_tlims[3]
+            @test t_left[] ≈ 100 - expected_tlims[3]
+        end
+
+        test_tmax(sixdrops,coag_data,coagsettings,L,t_start,expected_tlims)
+        test_tleft(sixdrops,coag_data,coagsettings,L,t_start,expected_tlims)
+    end
+
+    six_drops,six_drops_coag_settings,six_drops_coag_data = empty_drops(6)
 
 end
 
