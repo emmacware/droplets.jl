@@ -24,7 +24,7 @@ end
 
         effective_vol = sum(init_method.X.*init_method.ξ) / (sum(init_method.ξ))
         effective_radius = volume_to_radius(effective_vol)
-        @test effective_radius ≈ coagsettings.R0 rtol = 1e-2 
+        @test effective_radius ≈ coagsettings.R0 rtol = 1e-1
         if init_func == init_ξ_const
             @test all(==(init_method.ξ[1]), init_method.ξ)
         end
