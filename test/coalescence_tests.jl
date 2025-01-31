@@ -62,14 +62,8 @@ end
         Random.seed!()
         ξ_const = init_ξ_const(coagsettings)
         ctimestep = deepcopy(ξ_const)
-        if scheme == log_deficit()
-            ctimestep = deficit_allocations{FT}(ctimestep)
-        end
         for _ in 1:50
             coalescence_timestep!(Serial(),scheme, ctimestep,coag_data, coagsettings)
-        end
-        if scheme == log_deficit()
-            ctimestep = ctimestep.droplets
         end
         # coag only
         @test sum(ctimestep.ξ) <= sum(ξ_const.ξ)
@@ -82,7 +76,6 @@ end
 
     test_schemes(none(),coag_data, coagsettings)
     test_schemes(Adaptive(),coag_data, coagsettings)
-    test_schemes(log_deficit(),coag_data, coagsettings)
 
     #test that deficit for Adaptive is zero
     begin
