@@ -35,7 +35,7 @@ jobs:
       if: success()
 
     - name: Submit coverage
-      uses: codecov/codecov-action@v5.3.1
+      uses: codecov/codecov-action@v5.4.0
       with:
         token: ${{secrets.CODECOV_TOKEN}}
         slug: emmacware/droplets.jl
