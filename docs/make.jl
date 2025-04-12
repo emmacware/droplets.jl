@@ -1,14 +1,13 @@
 using Documenter, Droplets
 
 makedocs(
-    sitename = "Docs for Droplets.jl",
-    doctest = false,
-    format = Documenter.HTML(prettyurls = get(ENV, "CI", nothing) == "true"),
-    remotes = nothing,
-    clean = false,
-    pages = Any[
+    sitename = "Droplete Documentation",
+    modules = [Droplets],
+    format = Documenter.HTML(),
+    pages = [
         "Home" => "index.md",
     ],
+    clean = true,
 )
 
 deploydocs(repo = "github.com/emmacware/droplets.jl.git", target = "build")
