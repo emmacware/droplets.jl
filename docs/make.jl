@@ -11,4 +11,4 @@ makedocs(
     clean = true,
 )
 
-deploydocs(repo = "github.com/emmacware/droplets.jl.git",branch = "gh-pages", target = "build",force=true)
+deploydocs(repo = "github.com/emmacware/droplets.jl.git",branch = "gh-pages", target = "build",forcepush=true)
