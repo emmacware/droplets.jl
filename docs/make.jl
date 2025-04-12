@@ -3,8 +3,12 @@ using Documenter, Droplets
 
 makedocs(
     sitename = "Droplets.jl",
-    # modules = [Droplets],
+    modules = [Droplets],
     format = Documenter.HTML(),
+    deploydocs = [
+        Documenter.HTML(),
+        Documenter.GitHubActions(),
+    ]
     pages = [
         "Home" => "index.md",
     ],

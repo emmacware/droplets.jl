@@ -29,7 +29,6 @@ Fields:
 - `normalize_bins_dlnr`: A boolean indicating whether to normalize the bins by the logarithm of the radius (default: true).
 
 """
-Base.@kwdef struct run_settings{FT<:AbstractFloat}
 Base.@kwdef struct run_settings{FT<:AbstractFloat} #??
     num_bins::Int = Int(128)
     radius_bins_edges = 10 .^ range(log10(10*1e-6), log10(5e3*1e-6), length=num_bins+1) 
