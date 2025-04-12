@@ -1,4 +1,4 @@
-push!(LOAD_PATH, "../src/")
+push!(LOAD_PATH, "../")
 using Documenter, Droplets
 
 makedocs(
