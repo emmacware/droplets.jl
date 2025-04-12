@@ -34,52 +34,17 @@ function coag_runtime(randseed::Int,droplets::droplet_attributes,
 end
 
 
-function coag_runtime_log_deficit(randseed::Int,droplets::deficit_allocations,
-    coag_settings::coag_settings{FT},run_settings::run_settings{FT}) where FT<:AbstractFloat
-    deficit_droplets = zeros(FT, Int(run_settings.output_steps[end]/coag_settings.Δt))
-    deficit_pairs = zeros(FT, Int(run_settings.output_steps[end]/coag_settings.Δt))
-    
-    Random.seed!(randseed)
-    println("Running simulation...")
-
-    coal_func_time::FT = 0.0
-    bins::Matrix{FT} = zeros(FT, run_settings.num_bins, 4)
-    threading,scheme = run_settings.coag_threading, run_settings.scheme
-
-    simtime::FT = @CPUelapsed begin
-        for i  in  1:length(run_settings.output_steps)
-            if i !=1
-                timestepper = (run_settings.output_steps[i]-run_settings.output_steps[i-1])/coag_settings.Δt
-                ctime::FT = @CPUelapsed begin
-                    for t in 1:timestepper
-                        coalescence_timestep!(threading,log_deficit(),droplets,droplets.coag_data,coag_settings)
-                        deficit_droplets[Int((run_settings.output_steps[i-1]/coag_settings.Δt)+t)] = sum(droplets.deficit)
-                        deficit_pairs[Int((run_settings.output_steps[i-1]/coag_settings.Δt)+t)] = count(x -> x != 0, droplets.deficit)
-                    end
-                end
-                coal_func_time += ctime
-            end
-            bins[:,i] = binning_func(droplets.droplets,run_settings.output_steps[i],run_settings,coag_settings)
-            # println("Time: ", run_settings.output_steps[i], " seconds")
-        end
-    end
-    println("simtime =", simtime)
-    println("coal_func_time =", coal_func_time)
-
-    return bins, coal_func_time,deficit_droplets,deficit_pairs
-end
-
-function plot_dsd(bins,runsettings::run_settings{FT};color="black",label=false,legend=false) where FT<:AbstractFloat   
+function plot_dsd(bins,runsettings::run_settings{FT};color="black",label=false,legend=true) where FT<:AbstractFloat   
     radius_bins_edges = runsettings.radius_bins_edges
     mids = 0.5*(radius_bins_edges[1:end-1] + radius_bins_edges[2:end])*1e6
-    plot1 = plot!(mids,bins,lc=color,xaxis=:log,label=label,legend=legend)
-    return plot1
-end
+    plot1 = plot!(mids,bins,xaxis=:log,label= runsettings.output_steps',legend=legend,legendtitle="Time Steps (s)")
+    xlabel!("Radius (μm)")
+    if runsettings.binning_method == number_density
+        ylabel!("Number density (m^-3)")
+    elseif runsettings.binning_method == mass_density_lnr
+        ylabel!("Mass density (kg m^-3)")
+    end
+    title!("Time Evolution of Droplet Size Distribution")
 
-function ppmc_dsd(bins,runsettings::run_settings{FT};color="black") where FT<:AbstractFloat
-    radius_bins_edges = runsettings.radius_bins_edges
-    mids = 0.5*(radius_bins_edges[1:end-1] + radius_bins_edges[2:end])
-    bins = replace(bins, 0 => 0.0001)
-    plot1 = plot!(mids,bins,lc=color,xaxis=:log,yaxis=:log,legend=false,ylims = [1e9,2e14])
     return plot1
 end

@@ -21,3 +21,7 @@ bins,times = coag_runtime(1,drops,coagsettings,runsettings)
 plot()
 plot_dsd(bins*kg_to_g,runsettings)
 
+
+#Save plot
+plot_path = joinpath("..", "Examples", "Shima09.pdf")
+savefig(plot_path)
