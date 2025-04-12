@@ -2,8 +2,8 @@ push!(LOAD_PATH, "../src/")
 using Documenter, Droplets
 
 makedocs(
-    sitename = "Droplete Documentation",
-    modules = [Droplets],
+    sitename = "Droplets.jl",
+    # modules = [Droplets],
     format = Documenter.HTML(),
     pages = [
         "Home" => "index.md",
