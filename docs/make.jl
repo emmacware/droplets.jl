@@ -11,4 +11,4 @@ makedocs(
     ],
 )
 
-deploydocs(repo = "github.com/emmacware/droplets.jl", target = "build")
+deploydocs(repo = "github.com/emmacware/droplets.jl.git", target = "build")
