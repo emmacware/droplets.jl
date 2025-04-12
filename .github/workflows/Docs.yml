@@ -18,8 +18,8 @@ jobs:
       with:
         version: '1.9'
 
-    - name: Install dependencies
-      run: julia --project=docs -e 'using Pkg; Pkg.instantiate()'
+    - name: Install package
+      run: julia --project=docs -e 'using Pkg; Pkg.develop(path="."); Pkg.instantiate()'
 
     - name: Build and deploy documentation
       env:
