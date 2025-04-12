@@ -2,21 +2,32 @@ name: Documentation
 
 on:
   push:
-    tags: '*'
-  pull_request:
+    branches:
+      - main
 
 jobs:
-  docbuild:
+  deploy:
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: read
+      statuses: write
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v2
-      - uses: julia-actions/setup-julia@latest
-        with:
-          version: 1.7
-      - name: Install dependencies
-        run: julia --project=docs/ -e 'using Pkg; Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()'
-      - name: Build and deploy
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # For authentication with GitHub Actions token
-          DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }} # For authentication with SSH deploy key
-        run: julia --project=docs/ docs/make.jl
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up Julia
+      uses: julia-actions/setup-julia@v1
+      with:
+        version: '1.9'
+
+    - name: Install package
+      run: julia --project=docs -e 'using Pkg; Pkg.develop(path="."); Pkg.instantiate()'
+
+    - name: Build and deploy documentation
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
+      run: julia --project=docs docs/make.jl

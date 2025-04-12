@@ -5,6 +5,30 @@ export run_settings, error_measure, number_density, mass_density_lnr, binning_fu
 
 #####
 
+"""
+    struct run_settings{FT<:AbstractFloat}
+
+A struct representing the run settings for the binning process.
+
+Fields:
+- `FT`: The type of floating-point numbers used in the run settings.
+- `num_bins`: The number of bins to use for binning output(default: 128).
+- `radius_bins_edges`: The edges of the bins for the radius (default: logarithmic scale from 10e-6 to 5e3e-6).
+- `smooth`: A boolean indicating whether to apply smoothing to the bins (default: true).
+- `smooth_scope`: The scope of smoothing (default: 2).
+- `init_random_seed`: The random seed for initialization (default: 30).
+- `coag_threading`: The threading method for coalescence (default: Serial).
+    - Serial() or Parallel()
+- `scheme`: The scheme to use for coalescence (default: none).
+    -none(), Adaptive()
+- `output_steps`: The time steps at which to output the results (default: [0, 1200, 2400, 3600]).
+- `init_method`: The method to use for initialization (default: init_logarithmic).
+    - init_logarithmic,init_ξ_const, init_uniform_sd
+- `binning_method`: The method to use for binning (default: mass_density_lnr). 
+    (a function that takes droplets and coagsettings as arguments)
+- `normalize_bins_dlnr`: A boolean indicating whether to normalize the bins by the logarithm of the radius (default: true).
+
+"""
 Base.@kwdef struct run_settings{FT<:AbstractFloat} #??
     num_bins::Int = Int(128)
     radius_bins_edges = 10 .^ range(log10(10*1e-6), log10(5e3*1e-6), length=num_bins+1) 
