@@ -27,7 +27,25 @@ struct Adaptive end
 struct none end
 
 """
-coag_settings is a struct that holds the settings for the coalescence simulation: timestep, volume, Ns, kernel type, etc.
+    coag_settings{FT<:AbstractFloat}
+
+A struct representing the settings for coalescence.
+
+# Fields
+- `FT`: AbstractFloat.
+- `Δt`: The time step for the coalescence simulation.
+- `ΔV`: The volume of the coalescence domain.
+- `Ns`: The number of superdroplets.
+- `scale`: The scaling factor that allows for linear sampling.
+- `R_min`: The minimum radius of sampled droplets, used in some initializations. Radius in meters
+- `R_max`: The maximum radius of sampled droplets, used in some initializations. Radius in meters.
+- `golovin_kernel_coeff`: The Golovin kernel coefficient, 1/seconds.
+- `hydrodynamic_collision_eff_func`: A boolean indicating whether to use the
+        hydrodynamic collision efficiency function. Currently not implemented.
+- `kernel`: The kernel function used for coalescence. Implemented options are `golovin` or `hydrodynamic`,
+    can take any user implemented function with input type (::droplet_attributes, pairindex::Tuple{Int,Int}, ::coag_settings{FT}).
+- `n0`: The initial real world droplet concentration.
+- `R0`: The initial seed radius of the droplets.
 """
 Base.@kwdef struct coag_settings{FT<:AbstractFloat}
     Δt::FT = FT(1.0)
@@ -43,6 +61,18 @@ Base.@kwdef struct coag_settings{FT<:AbstractFloat}
     R0::FT = FT(30.531e-6) # initial radius
 end
 
+"""
+    struct droplet_attributes{FT<:AbstractFloat}
+
+A struct representing the attributes of a droplet.
+
+Fields:
+- FT: AbstractFloat.
+- ξ: Vector of integers representing the multiplicity of each droplet.
+- R: Vector of floats representing the radius of each droplet.
+- X: Vector of floats representing the volume of each droplet.
+
+"""
 struct droplet_attributes{FT<:AbstractFloat}
     ξ::Vector{Int}
     R::Vector{FT}
@@ -50,6 +80,22 @@ struct droplet_attributes{FT<:AbstractFloat}
 end
 
 
+"""
+    struct coagulation_run{FT<:AbstractFloat}
+
+Struct initialising temp memory used for coagulation.
+
+Input:
+- Ns::Int : Number of superdroplets.
+
+Fields:
+- I::Vector{Int} : Vector of indexes to be shuffled for permutations.
+- pαdt::Vector{FT} : Vector of coalescence probabilities for each pair.
+- ϕ::Vector{FT} : Random numbers to be used in Monte Carlo coalescence.
+- lowest_zero::Ref{Bool} : Reference to a boolean indicating if the lowest multiplicity is zero.
+- deficit::Ref{FT} : Reference to a float representing the deficit in mass or volume.
+
+"""
 struct coagulation_run{FT<:AbstractFloat}
     Ns::Int
     I::Vector{Int}
@@ -72,14 +118,18 @@ end
 #---------------------------------------------------------
 # INITIALIZATION
 #---------------------------------------------------------
-# init_ξ_const initializes arrays based on the constant-multiplicity initialization method
-# described in Shima et al. (2009) https://doi.org/10.5194/acp-9-4491-2009
-# n0 is the number concentration of droplets, R0 an initial radius of the droplets
-# ΔV is the volume of the domain, Ns is the number of superdroplets
-# the second option adds mass of solute as an attribute, M0 is the initial mass of solute
-# the function draws from an exponential distribution
-# MOVE
 
+"""
+    init_ξ_const(settings::coag_settings{FT}) where FT<:AbstractFloat
+
+init_ξ_const initializes droplets based on the constant-multiplicity initialization method,
+using an exponential distribution around the initial volume of the droplets. The method is
+as described in Shima et al. (2009) https://doi.org/10.5194/acp-9-4491-2009
+
+Arguments
+- `settings`: Coagulation settings, type ::coag_settings.
+
+"""
 function init_ξ_const(settings::coag_settings{FT}) where FT<:AbstractFloat
     Ns = settings.Ns
     ΔV = settings.ΔV
@@ -94,7 +144,17 @@ function init_ξ_const(settings::coag_settings{FT}) where FT<:AbstractFloat
     return droplets
 end
 
+"""
+    init_logarithmic(settings::coag_settings{FT}) where FT<:AbstractFloat
 
+init_logarithmic initializes the superdroplets, using a logarithmically spaced droplet radius spectrum,
+initializing the multiplicities so that the water volume in the system forms an exponential distribution
+around the initial volume.
+
+Arguments
+- `settings`: Coagulation settings.
+
+"""
 
 function init_logarithmic(settings::coag_settings{FT})where FT<:AbstractFloat
     Ns = settings.Ns
@@ -149,6 +209,18 @@ function init_logarithmic(settings::coag_settings{FT})where FT<:AbstractFloat
     return droplets
 end
 
+"""
+init_uniform_sd(settings::coag_settings{FT}) where FT<:AbstractFloat
+
+init_uniform_sd initializes the superdroplets, using an evenly spaced droplet radius spectrum,
+initializing the multiplicities so that the water volume in the system forms an exponential distribution
+around the initial volume.
+
+Arguments
+- `settings`: Coagulation settings.
+
+"""
+
 function init_uniform_sd(settings::coag_settings{FT})where FT<:AbstractFloat
     Ns = settings.Ns
     ΔV = settings.ΔV
@@ -202,6 +274,14 @@ function init_uniform_sd(settings::coag_settings{FT})where FT<:AbstractFloat
     return droplets
 end
 
+"""
+    init_monodisperse(settings::coag_settings{FT}) where FT<:AbstractFloat
+
+init_monodisperse initializes the superdroplets so that all droplets have the same attributes.
+Arguments
+- `settings`: Coagulation settings.
+
+"""
 
 function init_monodisperse(settings::coag_settings{FT})where FT<:AbstractFloat
     Ns = settings.Ns
@@ -223,10 +303,21 @@ end
 #---------------------------------------------------------
 
 # terminal velocity of droplets
+"""
+    terminal_v(r::FT) where FT<:AbstractFloat
+
+Compute the terminal velocity of a droplet of radius r, using tables from
+Gunn and Kinzer, (1949), https://doi.org/10.1175/1520-0469(1949)006<0243:TTVOFF>2.0.CO;2
+
+# Arguments
+- `r::FT`: The radius of the droplet in meters.
+
+# Returns
+The terminal velocity of the droplet in meters/second.
+
+"""
 function terminal_v(r::FT)::FT where FT<:AbstractFloat  # terminal velocity 
-    # Tables from
-    # THE TERMINAL VELOCITY OF FALL FOR WATER DROPLETS IN STAGNANT AIR
-    # Gunn, R., Kinzer, G. D. (1949), https://doi.org/10.1175/1520-0469(1949)006<0243:TTVOFF>2.0.CO;2
+
 
     if 2*r*100<0.0078
         tv=1.2*10e6*(r*100)^2
@@ -266,12 +357,24 @@ end
 #     return Y
 # end
 
-###########################################################
-# The hydrodynamic kernel function two methods: one for superdroplet 
-# structures and one for two radius values -- it takes dummy volumes so 
-# that the call could be generalized in the coalescence_timestep function
+#---------------------------------------------------------
+# Coalescence Kernels
+#---------------------------------------------------------
+"""
+    hydrodynamic(droplets::droplet_attributes, (j,k)::Tuple{Int,Int}, settings::coag_settings{FT})::FT where FT<:AbstractFloat
 
+Hydronynamic kernel function for droplet coalescence, used to calculate the probabilities of two 
+    droplets colliding.
+    K(r,r') = π * (r+r')^2 * |v(r)-v(r')| * E(r,r')
+    where E(r,r') is the collision efficiency function, (currently not implemented), and v is the terminal velocity of 
+    a droplet of radius size r.
 
+# Arguments
+- `droplets::droplet_attributes`: The attributes of the droplets.
+- `(j,k)::Tuple{Int,Int}`: The indices of the droplets.
+- `settings::coag_settings{FT}`: The coagulation settings.
+
+"""
 @inline function hydrodynamic(droplets::droplet_attributes, (j,k)::Tuple{Int,Int}, settings::coag_settings{FT})::FT where FT<:AbstractFloat
     Rj, Rk = droplets.R[j], droplets.R[k]
     if settings.hydrodynamic_collision_eff_func == true
@@ -284,16 +387,19 @@ end
     return E *π * Rsum^2 *vdif
 end
 
-#---------------------------------------------------------
-# GOLOVIN KERNEL (Golovin,1963)
-#---------------------------------------------------------
-###########################################################
-# The golovin kernel function two methods: one for superdroplet 
-# structures and one for two volume values -- it takes dummy radius values so 
-# that the call could be generalized in the coalescence_timestep function
+"""
+    golovin(droplets, (j, k), settings)
 
+Golovin (or additive) kernel function for droplet coalescence, used to calculate the probabilities of two droplets colliding.
+    K(x,x') = b(x+x'),where b is the Golovin kernel coefficient, and x is the volume of the droplet.
+Taken from Golovin (1963), this kernel has an analytic solution for the Smulochowski Coagulation Equation.
 
+# Arguments
+- `droplets`: droplet attributes
+- `(j, k)`: indices of the droplets
+- `settings`: coagulation settings
 
+"""
 @inline function golovin(droplets::droplet_attributes, (j,k)::Tuple{Int,Int}, settings::coag_settings{FT})::FT where FT<:AbstractFloat
     return settings.golovin_kernel_coeff *(droplets.X[j] + droplets.X[k])# Xsum
 end
@@ -301,13 +407,20 @@ end
 #---------------------------------------------------------
 # PROBABILITIES
 #---------------------------------------------------------
-#given timestep and volume,
-#kernel is a kwarg that can be set to either golovin or hydrodynamic
-#the function has two methods: one for superdroplet structures and one for
-#free radius, volume, and multiplicity values
 
+"""
+    pair_Ps_adaptive!(α::Int, pair::Tuple{Int,Int}, droplets::droplet_attributes, coag_data::coagulation_run, t_max::Vector{FT})
 
+This function calculates the coalescence probability for a given pair of droplets, using adaptive timestepping logic (Bartman et al. 2021). 
+It takes the following arguments:
 
+- `α::Int`: The index of the coalescence model.
+- `pair::Tuple{Int,Int}`: The indices of the droplets in the pair.
+- `droplets::droplet_attributes`: The attributes of the droplets.
+- `coag_data::coagulation_run`: The coagulation run data.
+- `t_max::Vector{FT}`: The maximum timestep allowed given multiple sampling.
+
+"""
 function pair_Ps_adaptive!(α::Int,pair::Tuple{Int,Int}, droplets::droplet_attributes, coag_data::coagulation_run,t_max::Vector{FT},
     t_left::Ref{FT},kernel::Function,settings::coag_settings{FT}) where FT<:AbstractFloat
     if droplets.ξ[pair[1]] < droplets.ξ[pair[2]]
@@ -331,6 +444,20 @@ function pair_Ps_adaptive!(α::Int,pair::Tuple{Int,Int}, droplets::droplet_attri
 
 end
 
+
+"""
+    compute_pαdt!(L::Vector{Tuple{Int,Int}}, droplets::droplet_attributes, coag_data::coagulation_run, kernel::Function, coagsettings::coag_settings{FT}) where FT<:AbstractFloat
+
+Map the probability function over the list of droplet pairs, L, and update the coagulation data in place.
+
+# Arguments
+- `L::Vector{Tuple{Int,Int}}`: List of droplet indices to be considered for coalescence.
+- `droplets::droplet_attributes`: Droplet attributes.
+- `coag_data::coagulation_run`: Coagulation data.
+- `kernel::Function`: Coalescence kernel function.
+- `coagsettings::coag_settings{FT}`: Coagulation settings.
+
+"""
 @inline function compute_pαdt!(L::Vector{Tuple{Int,Int}}, droplets::droplet_attributes,coag_data::coagulation_run,kernel::Function,coagsettings::coag_settings{FT}) where FT<:AbstractFloat
     map(i -> pair_Ps!(i, L[i], droplets,coag_data,kernel, coagsettings), eachindex(coag_data.pαdt))
     coag_data.pαdt .*=  coagsettings.scale * coagsettings.Δt / coagsettings.ΔV
@@ -341,6 +468,20 @@ end
 end
 
 
+"""
+    adaptive_pαdt!(L::Vector{Tuple{Int,Int}}, droplets::droplet_attributes, coag_data::coagulation_run, t_left::Ref{FT}, kernel::Function, settings::coag_settings{FT}) where FT<:AbstractFloat
+
+Map the probability function over the list of droplet pairs, L, using adaptive timestepping logic and update the coagulation data in place.
+
+# Arguments
+- `L::Vector{Tuple{Int,Int}}`: List of droplet indices.
+- `droplets::droplet_attributes`: Droplet attributes.
+- `coag_data::coagulation_run`: Coagulation data.
+- `t_left::Ref{FT}`: Timestep after adaptive substep.
+- `kernel::Function`: Coalescence kernel function.
+- `settings::coag_settings{FT}`: Coagulation settings.
+
+"""
 function adaptive_pαdt!(L::Vector{Tuple{Int,Int}},droplets::droplet_attributes,coag_data::coagulation_run,t_left::Ref{FT},kernel::Function, settings::coag_settings{FT}) where FT<:AbstractFloat
     t_max = Vector{FT}(undef, length(L))
     map(α -> pair_Ps_adaptive!(α,L[α],droplets,coag_data,t_max,t_left,kernel,settings),eachindex(coag_data.pαdt))
@@ -355,15 +496,22 @@ end
 #----------------------------------------------------------
 # COALESCENCE
 #----------------------------------------------------------
-#the coalescence_timestep function takes superdroplets and runs them
-#through an All-or-nothing update timestep based on the SDM method 
-#described in Shima et al. (2009)
-#when the lowest multiplicity of superdroplets is less than 1, the 
-#largest superdroplet is split into two equal parts, as proposed by
-#Dziekan and Pawlowska (ACP, 2017) https://doi.org/10.5194/acp-17-13509-2017
 
-#currently all can be parallelized on CPUs with Threads.@threads
+"""
+    coalescence_timestep!(run::backend, scheme::scheme_type, droplets::droplet_attributes)
 
+Perform a coalescence timestep for the given droplets using the Superdroplet Method (SDM) 
+Shima et al. (2009)
+when the lowest multiplicity of superdroplets is less than 1, the 
+largest superdroplet is split into two equal parts, as proposed by
+Dziekan and Pawlowska (ACP, 2017) https://doi.org/10.5194/acp-17-13509-2017
+
+# Arguments
+- `run::backend`: Threading over Linear Sampling option
+- `scheme::schemetype`: adaptive or none
+- `droplets::droplet_attributes`: The superdroplets.
+
+"""
 function coalescence_timestep!(run::Union{Serial, Parallel},scheme::none, droplets::droplet_attributes,
     coag_data::coagulation_run,settings::coag_settings{FT}) where FT<:AbstractFloat
     Ns::Int = settings.Ns
@@ -402,7 +550,19 @@ end
 #----------------------------------------------------------
 # UPDATE
 #----------------------------------------------------------
+"""
+    test_pairs!(scheme::backend, Ns::Int, L::Vector{Tuple{Int,Int}}, droplets::droplet_attributes, coag_data::coagulation_run)
 
+Perform the SDM coalescence update for the superdroplets. Update the droplet attributes in place in case of 
+    coalescence event.
+
+# Arguments
+- `scheme::Union{Serial, Parallel}`: The scheme to use for the update.
+- `Ns::Int`: The number of superdroplets.
+- `L::Vector{Tuple{Int,Int}}`: The list of droplet pairs.
+- `droplets::droplet_attributes`: The droplet attributes.
+- `coag_data::coagulation_run`: The coagulation data.
+"""
 
 function test_pairs!(scheme::Serial,Ns::Int,L::Vector{Tuple{Int,Int}},droplets::droplet_attributes{FT},coag_data::coagulation_run) where FT<:AbstractFloat
     
@@ -432,6 +592,18 @@ function test_pairs!(scheme::Parallel,Ns::Int,L::Vector{Tuple{Int,Int}},droplets
         split_highest_multiplicity!(droplets)
     end
 end
+
+"""
+    sdm_update!(pair::Tuple{Int,Int}, α::Int, droplets::droplet_attributes, coag_data::coagulation_run)
+Perform the SDM coalescence update for the superdroplets when a coalesence event is determined, updating
+    the droplet attributes in place.
+
+# Arguments
+- `pair::Tuple{Int,Int}`: The pair of droplets to be updated.
+- `α::Int`: The index of the coalescence model.
+- `droplets::droplet_attributes`: The droplet attributes.
+- `coag_data::coagulation_run`: The coagulation data.
+"""
 
 function sdm_update!(pair::Tuple{Int,Int},α::Int, droplets::droplet_attributes{FT},coag_data::coagulation_run) where FT<:AbstractFloat
 
@@ -483,14 +655,19 @@ function sdm_update!(pair::Tuple{Int,Int},α::Int, droplets::droplet_attributes{
     return nothing
 end
 
+"""
+    split_highest_multiplicity!(droplets::droplet_attributes{FT}) where FT<:AbstractFloat
+Split the superdroplet with the highest multiplicity into two equal parts, as proposed by
+    Dziekan and Pawlowska (ACP, 2017) https://doi.org/10.5194/acp-17-13509-2017
+    This function is called when the lowest multiplicity of superdroplets is less than 1.
+# Arguments
+- `droplets::droplet_attributes{FT}`: The droplet attributes.
+"""
 
 
 function split_highest_multiplicity!(droplets::droplet_attributes{FT}) where FT<:AbstractFloat
     if maximum(droplets.ξ) > 1
         while (minimum(droplets.ξ) <= 0 && maximum(droplets.ξ) > 1)
-            # println("Superdroplet ", argmin(ξ), " has multiplicity of ", ξ[argmin(ξ)])
-            # Split superdroplet with highest multiplicity, half goes to argmin(ξ) and half stays
-            # Idea from Dziekan and Pawlowska (ACP, 2017) https://doi.org/10.5194/acp-17-13509-2017
             argmin_i = argmin(droplets.ξ)
             argmax_i = argmax(droplets.ξ)
             droplets.ξ[argmin_i] = floor(droplets.ξ[argmax_i]/2)

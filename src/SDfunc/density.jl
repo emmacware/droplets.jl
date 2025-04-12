@@ -4,23 +4,6 @@
 export calc_ρw
 
 #Only 1 function in here, calc_ρw
-#options for arguments:
-#calc_ρw(droplets,ΔgridV,Nx,Ny,grid_dict), returns ρw, grid_dict
-#       -this option goes through the whole system, using a grid_dict of superdroplet 
-#       mutable structs to calculate the density of liquid water as a grid center value
-#calc_ρw(droplets,ΔV), returns ρw
-#       -this option is meant for a box or single grid cell: 
-#       or just a relevant list of superdroplets
-#       droplets should be a vector of superdroplet structs
-#calc_ρw(ξ,X,ΔV), returns ρw
-#       -this option is meant for a box or single grid cell:
-#       takes in the ξ and X values as vectors
-
-#Not sure how to implement this in 2D looping over the full Ns superdroplets
-#without splitting it up by grid yet
-
-########################################################################################
-
 
 function calc_ρw(droplets,ΔgridV,Nx,Ny,grid_dict)
     for i in 1:Nx
@@ -41,12 +24,35 @@ function calc_ρw(droplets,ΔgridV,Nx,Ny,grid_dict)
 end
 
 
-function calc_ρw(droplets,ΔV)
-    ρw= sum([droplet.ξ*droplet.X*ρl for droplet in droplets])/ΔV
+"""
+    calc_ρw(droplets, ΔV)
+
+Calculate the density of water (ρw) based on the given droplet attributes and domain volume.
+
+# Arguments
+- `droplets`: an array of droplets with attributes `ξ` (multiplicity) and `X` (volume).
+- `ΔV`: grid cell volume.
+
+# Returns
+- `ρw`: density of water
+
+"""
+function calc_ρw(droplets, ΔV)
+    ρw = sum([droplet.ξ * droplet.X * ρl for droplet in droplets]) / ΔV
     return ρw
 end
 
-function calc_ρw(ξ,X,ΔV)
-    ρw= sum(ξ.*X.*ρl)/ΔV
+"""
+    calc_ρw(ξ, X, ΔV)
+
+Calculate the density of liquid water (ρw) based on the given droplet multiplicity(ξ) and volume(X),
+and domain volume.
+
+# Returns
+- `ρw`: density of water
+
+"""
+function calc_ρw(ξ, X, ΔV)
+    ρw = sum(ξ .* X .* ρl) / ΔV
     return ρw
 end
