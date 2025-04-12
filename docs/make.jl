@@ -5,10 +5,6 @@ makedocs(
     sitename = "Droplets.jl",
     modules = [Droplets],
     format = Documenter.HTML(),
-    deploydocs = [
-        Documenter.HTML(),
-        Documenter.GitHubActions(),
-    ],
     pages = [
         "Home" => "index.md",
     ],
