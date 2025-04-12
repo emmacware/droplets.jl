@@ -248,6 +248,7 @@ end
 
 """
     dq_liq_cond_activated(R, T, Senv, timestep, ρ_air)
+    dq_liq_cond_activated(R, M, m, T, Senv, timestep, ρ_air)
 
 Calculate the change in liquid water mass due to condensation of activated droplets.
 
@@ -267,18 +268,6 @@ function dq_liq_cond_activated(R, T, Senv, timestep, ρ_air)
     dql = sum(dX .* ξ .* constants.ρl / ρ_air)
     return dql
 end
-function dq_liq_cond_activated(R,M,m,T,Senv,timestep,ρ_air)
-    dX = dXkohler_function_of_radius(R,M,m,T,Senv,timestep)
-    dql = sum(dX.*ξ.* constants.ρl / ρ_air) #/per volume?
-    return dql
-end
-
-function dq_liq_cond_activated(R,T,Senv,timestep,ρ_air)
-    dX = dXkohler_function_of_radius_activated(R,T,Senv,timestep)
-    dql = sum(dX.*ξ.* constants.ρl / ρ_air) #/per volume?
-    return dql
-end
-
 
 
 # function θcondenseupdate!(Sv,θ,Δtg,P,P0)
