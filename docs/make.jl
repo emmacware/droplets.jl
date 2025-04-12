@@ -8,7 +8,7 @@ makedocs(
     deploydocs = [
         Documenter.HTML(),
         Documenter.GitHubActions(),
-    ]
+    ],
     pages = [
         "Home" => "index.md",
     ],
