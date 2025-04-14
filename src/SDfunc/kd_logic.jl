@@ -7,7 +7,7 @@ using StaticArrays
 export coalescence_timestep!, static_droplet_attributes, coagulation_run, coag_settings, run_settings
 export KiD
 
-struct KiD <: scheme_type end
+struct KiD end #<: scheme_type end
 
 struct static_droplet_attributes{FT<:AbstractFloat,NSD}
     ξ::SVector{NSD,Int}
@@ -16,30 +16,30 @@ struct static_droplet_attributes{FT<:AbstractFloat,NSD}
 end
 
 
-function coalescence_timestep!(run::backend,scheme::KiD, droplets::static_droplet_attributes,
-    coag_data::coagulation_run,settings::coag_settings{FT}) where FT<:AbstractFloat
+# function coalescence_timestep!(run::Serial,scheme::KiD, droplets::static_droplet_attributes,
+#     coag_data::coagulation_run,settings::coag_settings{FT}) where FT<:AbstractFloat
     
-    Ns::Int = settings.Ns
-    HealthyIdx = findfirst(iszero, droplets.ξ)
-    HealthyIdx = HealthyIdx === nothing ? Ns : HealthyIdx - 1
-    #or findfirst(istrue, healthy)
+#     Ns::Int = settings.Ns
+#     HealthyIdx = findfirst(iszero, droplets.ξ)
+#     HealthyIdx = HealthyIdx === nothing ? Ns : HealthyIdx - 1
+#     #or findfirst(istrue, healthy)
 
     
-    idx = shuffle(1:HealthyIdx)
-    #coagdata.I[1:HealthyIdx] = shuffle(1:HealthyIdx)
-    L = [(idx[l-1], idx[l]) for l in 2:2:HealthyIdx]
-    # L = [(coag_data.I[l-1], coag_data.I[l]) for l in 2:2:Ns]
-    # L = collect(partition(idx, 2)) IterTools...
+#     idx = shuffle(1:HealthyIdx)
+#     #coagdata.I[1:HealthyIdx] = shuffle(1:HealthyIdx)
+#     L = [(idx[l-1], idx[l]) for l in 2:2:HealthyIdx]
+#     # L = [(coag_data.I[l-1], coag_data.I[l]) for l in 2:2:Ns]
+#     # L = collect(partition(idx, 2)) IterTools...
 
-    compute_pαdt!(L, droplets,coag_data,settings.kernel, settings)
+#     compute_pαdt!(L, droplets,coag_data,settings.kernel, settings)
 
-    rand!(coag_data.ϕ)
+#     rand!(coag_data.ϕ)
 
-    test_pairs!(run,Ns,L,droplets,coag_data)
+#     test_pairs!(run,Ns,L,droplets,coag_data)
 
-end 
+# end 
 
-function coalescence_timestep!(run::backend,scheme::KiD, ξFT::SVector,X::SVector,
+function coalescence_timestep!(run::Serial,scheme::KiD, ξFT::SVector,X::SVector,
     coag_data::coagulation_run,settings::coag_settings{FT}) where FT<:AbstractFloat
 
     R = (volume_to_radius.(X))
@@ -50,8 +50,10 @@ function coalescence_timestep!(run::backend,scheme::KiD, ξFT::SVector,X::SVecto
     Ns::Int = settings.Ns
     HealthyIdx = findfirst(iszero, droplets.ξ)
     HealthyIdx = HealthyIdx === nothing ? Ns : HealthyIdx - 1
-    #or findfirst(istrue, healthy)
 
+    if HealthyIdx == 0
+        return (;SD_Vol = X,SD_Mult = ξFT)
+    end
     
     idx = shuffle(1:HealthyIdx)
     #coagdata.I[1:HealthyIdx] = shuffle(1:HealthyIdx)
@@ -63,15 +65,15 @@ function coalescence_timestep!(run::backend,scheme::KiD, ξFT::SVector,X::SVecto
 
     rand!(coag_data.ϕ)
 
-    test_pairs!(run,Ns,L,droplets,coag_data)
+    ξint, X = test_pairs!(run,Ns,L,droplets,coag_data)
 
-    ξFT = SVector{length(ξFT), FT}(map(FT, droplets.ξ))
-    X = droplets.X
+    ξFT = SVector{length(ξFT), FT}(map(FT, ξint))
+    # X = droplets.X
     return (;SD_Vol = X,SD_Mult = ξFT)
 end 
 
 @inline function compute_pαdt!(L::Vector{Tuple{Int,Int}}, droplets::static_droplet_attributes,coag_data::coagulation_run,kernel::Function,coagsettings::coag_settings{FT}) where FT<:AbstractFloat
-    map(i -> pair_Ps!(i, L[i], droplets,coag_data,kernel, coagsettings), eachindex(coag_data.pαdt))
+    map(i -> pair_Ps!(i, L[i], droplets,coag_data,kernel, coagsettings), eachindex(L))#coag_data.pαdt))
     coag_data.pαdt .*=  coagsettings.scale * coagsettings.Δt / coagsettings.ΔV
 end
 
@@ -86,16 +88,17 @@ end
 function test_pairs!(backend::Serial,Ns::Int,L::Vector{Tuple{Int,Int}},droplets::static_droplet_attributes{FT},coag_data::coagulation_run) where FT<:AbstractFloat
     
     coag_data.lowest_zero[] = false
-    for α::Int in 1:div(Ns, 2)
+    for α::Int in 1:length(L)#div(Ns, 2)
             
         if coag_data.ϕ[α] >= coag_data.pαdt[α]
             continue
         end
-        sdm_update!(L[α], α, droplets,coag_data)
+        droplets = sdm_update!(L[α], α, droplets,coag_data)
     end
     # if coag_data.lowest_zero[] == true
     #     split_highest_multiplicity!(droplets)
     # end
+    ξint, X = droplets.ξ, droplets.X
 end
 
 function sdm_update!(pair::Tuple{Int, Int}, α::Int, droplets::static_droplet_attributes{FT}, coag_data::coagulation_run) where FT<:AbstractFloat
@@ -150,7 +153,7 @@ function sdm_update!(pair::Tuple{Int, Int}, α::Int, droplets::static_droplet_at
         println("nooooo")
     end
     droplets = static_droplet_attributes(tmpξ, tmpR, tmpX)
-    return nothing
+    return droplets
 end
 
 function binning_func(droplets::static_droplet_attributes, t::FT,
