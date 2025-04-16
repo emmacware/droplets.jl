@@ -10,8 +10,7 @@ export KiD
 struct KiD end #<: scheme_type end
 
 struct static_droplet_attributes{FT<:AbstractFloat,NSD}
-    ξ::SVector{NSD,Int}
-    R::SVector{NSD,FT}
+    ξ::SVector{NSD,FT}
     X::SVector{NSD,FT}
 end
 
@@ -39,38 +38,100 @@ end
 
 # end 
 
+# function coalescence_timestep!(run::Serial,scheme::KiD, ξFT::SVector,X::SVector,
+#     coag_data::coagulation_run,settings::coag_settings{FT}) where FT<:AbstractFloat
+
+#     R = (volume_to_radius.(X))
+#     ξ = SVector{length(ξFT), Int}(map(Int, ξFT))
+
+#     droplets = static_droplet_attributes(ξ, R, X)
+    
+#     Ns::Int = settings.Ns
+#     HealthyIdx = findfirst(iszero, droplets.ξ)
+#     HealthyIdx = HealthyIdx === nothing ? Ns : HealthyIdx - 1
+
+#     if HealthyIdx == 0
+#         return (;SD_Vol = X,SD_Mult = ξFT)
+#     end
+    
+#     idx = shuffle(1:HealthyIdx)
+#     #coagdata.I[1:HealthyIdx] = shuffle(1:HealthyIdx)
+#     L = [(idx[l-1], idx[l]) for l in 2:2:HealthyIdx]
+#     # L = [(coag_data.I[l-1], coag_data.I[l]) for l in 2:2:Ns]
+#     # L = collect(partition(idx, 2)) IterTools...
+
+#     compute_pαdt!(L, droplets,coag_data,settings.kernel, settings)
+
+#     rand!(coag_data.ϕ)
+
+#     ξint, X = test_pairs!(run,Ns,L,droplets,coag_data)
+
+#     ξFT = SVector{length(ξFT), FT}(map(FT, ξint))
+#     # X = droplets.X
+#     return (;SD_Vol = X,SD_Mult = ξFT)
+# end 
+
 function coalescence_timestep!(run::Serial,scheme::KiD, ξFT::SVector,X::SVector,
     coag_data::coagulation_run,settings::coag_settings{FT}) where FT<:AbstractFloat
-
-    R = (volume_to_radius.(X))
-    ξ = SVector{length(ξFT), Int}(map(Int, ξFT))
-
-    droplets = static_droplet_attributes(ξ, R, X)
     
-    Ns::Int = settings.Ns
-    HealthyIdx = findfirst(iszero, droplets.ξ)
-    HealthyIdx = HealthyIdx === nothing ? Ns : HealthyIdx - 1
-
-    if HealthyIdx == 0
+    first_healthy_idx = findfirst(iszero, ξFT)
+    if first_healthy_idx === 1
         return (;SD_Vol = X,SD_Mult = ξFT)
     end
+    Ns::Int = first_healthy_idx-1
+    droplets = droplet_attributes{FT}(Int.(Vector(ξFT[1:Ns])), Vector((volume_to_radius.(X[1:Ns]))), Vector(X[1:Ns]))
     
-    idx = shuffle(1:HealthyIdx)
-    #coagdata.I[1:HealthyIdx] = shuffle(1:HealthyIdx)
-    L = [(idx[l-1], idx[l]) for l in 2:2:HealthyIdx]
-    # L = [(coag_data.I[l-1], coag_data.I[l]) for l in 2:2:Ns]
-    # L = collect(partition(idx, 2)) IterTools...
+    I = shuffle!(1:Ns)
+    L = [(I[l-1], I[l]) for l in 2:2:Ns]
 
     compute_pαdt!(L, droplets,coag_data,settings.kernel, settings)
 
     rand!(coag_data.ϕ)
 
-    ξint, X = test_pairs!(run,Ns,L,droplets,coag_data)
-
-    ξFT = SVector{length(ξFT), FT}(map(FT, ξint))
-    # X = droplets.X
+    test_pairs!(run,Ns,L,droplets,coag_data)
+    ξFT = SVector{length(ξFT), FT}(FT.(droplets.ξ))
+    X = SVector{length(ξFT), FT}(droplets.X)
     return (;SD_Vol = X,SD_Mult = ξFT)
 end 
+
+
+function size_thresh_separate_droplets(SD_Vol,SD_Mult,ρd)
+    FT = eltype(SD_Vol)
+    # Define the threshold for separating droplets
+    threshold = 40*1e-6 # meters
+    threshold_volume = (4/3) * π * (threshold^3) # m^3
+
+    # Separate the droplets based on the threshold
+    N_liq = sum(SD_Mult[SD_Vol .< threshold])
+    N_rai = sum(SD_Mult[SD_Vol .>= threshold])
+
+    q_liq = 1000*sum(SD_Vol[SD_Vol .< threshold].* SD_Mult[SD_Vol .< threshold])/ρd
+    q_rai = 1000*sum(SD_Vol[SD_Vol .>= threshold].* SD_Mult[SD_Vol .>= threshold])/ρd
+
+    return (N_liq=FT(N_liq), N_rai=FT(N_rai), q_liq=FT(q_liq), q_rai=FT(q_rai))
+end
+
+# function coalescence_timestep!(run::Serial,scheme::KiD, droplets::static_droplet_attributes{FT,NSD},
+#     coag_data::coagulation_run,settings::coag_settings{FT}) where {FT, NSD}
+    
+#     Ns::Int = settings.Ns
+#     droplets = static_to_droplets_tmp(droplets)
+    
+#     shuffle!(coag_data.I)
+#     L = [(coag_data.I[l-1], coag_data.I[l]) for l in 2:2:Ns]
+
+#     compute_pαdt!(L, droplets,coag_data,settings.kernel, settings)
+
+#     rand!(coag_data.ϕ)
+
+#     test_pairs!(run,Ns,L,droplets,coag_data)
+#     ξFT = SVector{length(ξFT), FT}(FT.(droplets.ξ))
+#     X = SVector{length(ξFT), FT}(droplets.X)
+
+#     return static_droplet_attributes{FT,NSD}(ξFT, X)
+# end 
+
+
 
 @inline function compute_pαdt!(L::Vector{Tuple{Int,Int}}, droplets::static_droplet_attributes,coag_data::coagulation_run,kernel::Function,coagsettings::coag_settings{FT}) where FT<:AbstractFloat
     map(i -> pair_Ps!(i, L[i], droplets,coag_data,kernel, coagsettings), eachindex(L))#coag_data.pαdt))
@@ -236,40 +297,3 @@ function binning_1d(values_unsorted::SVector{},weights_unsorted::SVector{},runse
     end
     return numdens
 end
-
-# FT = Float64
-# settings = coag_settings{FT}(Ns=100)
-# Ns = settings.Ns
-# ΔV = settings.ΔV
-# n0 = settings.n0
-# R0 = settings.R0
-
-# ξs = SVector{Ns,Int}(div(n0*ΔV,Ns)*ones(Ns))
-# X0 = radius_to_volume(R0)# initial volume m3    
-# Xs = SVector{Ns,FT}(rand(Exponential(X0), Ns))
-# Rs = SVector{Ns,FT}(volume_to_radius.(Xs))
-
-# droplets = static_droplet_attributes(ξs, Rs, Xs)
-# coagdata = coagulation_run{FT}(settings.Ns)
-
-# coalescence_timestep!(Serial(),KiD(), droplets,coagdata,settings)
-
-
-# Random.seed!(42)
-# runset = run_settings{FT}(scheme=KiD(), coag_threading=Serial())
-# bins::Matrix{FT} = zeros(FT, runset.num_bins, length(runset.output_steps))
-# threading,scheme = runset.coag_threading, runset.scheme
-#     coagdata = coagulation_run{FT}(settings.Ns)
-#         for i  in  1:length(runset.output_steps)
-            
-#             if i !=1
-#                 timestepper = (runset.output_steps[i]-runset.output_steps[i-1])/settings.Δt
-#                     for _ in 1:timestepper
-#                         coalescence_timestep!(threading,scheme,droplets,coagdata,settings)
-#                     end
-#             end
-#             bins[:,i] = binning_func(droplets,runset.output_steps[i],runset,settings)
-#             println("Time: ", runset.output_steps[i], " seconds")
-#         end
-
-# plot1 = plot!(bins,lc="black",xaxis=:log,ylims=[1e-9,2e14],label=false)
