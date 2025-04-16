@@ -443,7 +443,7 @@ end
 
 
 """
-    compute_pαdt!(L::Vector{Tuple{Int,Int}}, droplets::droplet_attributes, coag_data::coagulation_run, kernel::Function, coagsettings::coag_settings{FT}) where FT<:AbstractFloat
+    compute_pαdt!(L::Vector{Tuple{Int,Int}}, droplets::droplet_attributes, coag_data::coagulation_run, kernel::Function, scale::FT,scalecoagsettings::coag_settings{FT}) where FT<:AbstractFloat
 
 Map the probability function over the list of droplet pairs, L, and update the coagulation data in place.
 
@@ -452,12 +452,13 @@ Map the probability function over the list of droplet pairs, L, and update the c
 - `droplets::droplet_attributes`: Droplet attributes.
 - `coag_data::coagulation_run`: Coagulation data.
 - `kernel::Function`: Coalescence kernel function.
+- `scale::FT`: Scaling factor for the linear coalescence probability.
 - `coagsettings::coag_settings{FT}`: Coagulation settings.
 
 """
-@inline function compute_pαdt!(L::Vector{Tuple{Int,Int}}, droplets::droplet_attributes,coag_data::coagulation_run,kernel::Function,coagsettings::coag_settings{FT}) where FT<:AbstractFloat
+@inline function compute_pαdt!(L::Vector{Tuple{Int,Int}}, droplets::droplet_attributes,coag_data::coagulation_run,kernel::Function,scale::FT,coagsettings::coag_settings{FT}) where FT<:AbstractFloat
     map(i -> pair_Ps!(i, L[i], droplets,coag_data,kernel, coagsettings), eachindex(coag_data.pαdt))
-    coag_data.pαdt .*=  coagsettings.scale * coagsettings.Δt / coagsettings.ΔV
+    coag_data.pαdt .*=  scale * coagsettings.Δt / coagsettings.ΔV
 end
 
 @inline function pair_Ps!(α::Int, (j,k)::Tuple{Int,Int}, droplets::droplet_attributes,coag_data::coagulation_run,kernel::Function,coagsettings::coag_settings{FT}) where FT<:AbstractFloat
@@ -516,7 +517,7 @@ function coalescence_timestep!(run::Union{Serial, Parallel},scheme::none, drople
     shuffle!(coag_data.I)
     L = [(coag_data.I[l-1], coag_data.I[l]) for l in 2:2:Ns]
 
-    compute_pαdt!(L, droplets,coag_data,settings.kernel, settings)
+    compute_pαdt!(L, droplets,coag_data,settings.kernel,settings.scale,settings)
 
     rand!(coag_data.ϕ)
 

@@ -4,7 +4,7 @@ using Random
 using Interpolations
 using StaticArrays
 
-export coalescence_timestep!, static_droplet_attributes, coagulation_run, coag_settings, run_settings
+export coalescence_timestep!, static_droplet_attributes
 export KiD
 
 struct KiD end #<: scheme_type end
@@ -17,17 +17,23 @@ end
 function coalescence_timestep!(run::Serial,scheme::KiD, ξFT::SVector,X::SVector,
     coag_data::coagulation_run,settings::coag_settings{FT}) where FT<:AbstractFloat
     
-    first_healthy_idx = findfirst(iszero, ξFT)
-    if first_healthy_idx === 1
-        return (;SD_Vol = X,SD_Mult = ξFT)
+    Ns::Int = 0  # Declare once with a default value
+    first_unhealthy_idx = findfirst(iszero, ξFT)
+    if first_unhealthy_idx === 1
+        return (; SD_Vol = X, SD_Mult = ξFT)
+    elseif first_unhealthy_idx === nothing
+        Ns = length(ξFT)
+    else
+        Ns = first_unhealthy_idx - 1
     end
-    Ns::Int = first_healthy_idx-1
+    
     droplets = droplet_attributes{FT}(Int.(Vector(ξFT[1:Ns])), Vector(X[1:Ns]))
     
-    I = shuffle!(1:Ns)
+    I = shuffle(1:Ns)
     L = [(I[l-1], I[l]) for l in 2:2:Ns]
+    scale::FT = Ns * (Ns - 1) / 2 / (Ns / 2)
 
-    compute_pαdt!(L, droplets,coag_data,settings.kernel, settings)
+    compute_pαdt!(L, droplets,coag_data,settings.kernel,scale,settings)
 
     rand!(coag_data.ϕ)
 
@@ -45,11 +51,11 @@ function size_thresh_separate_droplets(SD_Vol,SD_Mult,ρd)
     threshold_volume = (4/3) * π * (threshold^3) # m^3
 
     # Separate the droplets based on the threshold
-    N_liq = sum(SD_Mult[SD_Vol .< threshold])
-    N_rai = sum(SD_Mult[SD_Vol .>= threshold])
+    N_liq = sum(SD_Mult[SD_Vol .< threshold_volume])
+    N_rai = sum(SD_Mult[SD_Vol .>= threshold_volume])
 
-    q_liq = 1000*sum(SD_Vol[SD_Vol .< threshold].* SD_Mult[SD_Vol .< threshold])/ρd
-    q_rai = 1000*sum(SD_Vol[SD_Vol .>= threshold].* SD_Mult[SD_Vol .>= threshold])/ρd
+    q_liq = 1000*sum(SD_Vol[SD_Vol .< threshold_volume].* SD_Mult[SD_Vol .< threshold_volume])/ρd
+    q_rai = 1000*sum(SD_Vol[SD_Vol .>= threshold_volume].* SD_Mult[SD_Vol .>= threshold_volume])/ρd
 
     return (N_liq=FT(N_liq), N_rai=FT(N_rai), q_liq=FT(q_liq), q_rai=FT(q_rai))
 end
