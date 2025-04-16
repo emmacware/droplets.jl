@@ -52,5 +52,4 @@ plot_dsd(bins*kg_to_g,runsettings)
 
 
 #Save plot
-plot_path = joinpath("..", "Examples", "Shima09.pdf")
-savefig(plot_path)
+savefig("Shima09.pdf")

@@ -85,8 +85,8 @@ function parcel_model_sd(dY, Y_CompVec, p, t)
     dqᵢ_dt_hom = dNᵢ_dt_hom * PSD_liq.V * ρᵢ / ρ_air
 
     # Condensation/evaporation
-    dX = dXkohler_function_of_radius_activated.(Y_CompVec.R,T,Sₗ,t)
-    dr = drkohler_activated.(Y_CompVec.R,T,Sₗ,t)
+    R = volume_to_radius.(Y_CompVec.X)
+    dX = dXkohler_function_of_radius_activated.(R,T,Sₗ,t)
 
     if ce_params == "Superdroplets"
         dqₗ_dt_ce = sum(dX.*Y_CompVec.ξ.* ρₗ / ρ_air) #/per volume?
@@ -137,7 +137,6 @@ function parcel_model_sd(dY, Y_CompVec, p, t)
     dY[8] = dNₗ_dt      # mumber concentration of droplets
     dY[9] = dNᵢ_dt      # number concentration of activated particles
     dY[10] = dln_INPC_imm
-    dY.R = dr
     dY.X = dX
     dY.ξ .= 0
 end
