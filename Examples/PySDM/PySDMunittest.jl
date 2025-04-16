@@ -42,7 +42,6 @@ attributes["multiplicity"] = round.(attributes["multiplicity"])
 # Copy for Julia arguments
 X_start = attributes["volume"]
 ξ_start = Int.(attributes["multiplicity"])
-R_start = volume_to_radius.(X_start)#(3 * X_start / (4 * pi)).^(1/3)
 
 
 #-------------------------
@@ -77,8 +76,7 @@ asol = analytic_soln([0.001,1200,2400,3600],radius_bins_edges,n0,X0,ΔV, 1500)
 plot_dsd(asol*kg_to_g,runsettings,color="red",label=["Analytic Soln" false false false],legend=true)
 
 #julia
-drops = droplet_attributes(ξ_start, R_start, X_start)
-
+drops = droplet_attributes(ξ_start,X_start)
 bins,times = coag_runtime(1,drops,coagsettings,runsettings)
 plot2 = plot_dsd(bins*kg_to_g,runsettings,color="black",label=["Droplets.jl" false false false],legend=true)
 
