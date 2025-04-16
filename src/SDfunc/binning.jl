@@ -81,7 +81,8 @@ function binning_func(droplets::droplet_attributes, t::FT,
     runsettings::run_settings{FT},coagsettings::coag_settings{FT}) where FT<:AbstractFloat
 
     weights = runsettings.binning_method(droplets,coagsettings)
-    numdens = binning_1d(droplets.R,weights,runsettings)
+    R = volume_to_radius.(droplets.X)
+    numdens = binning_1d(R,weights,runsettings)
 
     if t != 0 && runsettings.smooth == true
         numdens = smoothbins!(numdens,runsettings)
@@ -90,12 +91,12 @@ function binning_func(droplets::droplet_attributes, t::FT,
     return numdens
 end
 
-function binning_1d(values_unsorted::Vector{},weights_unsorted::Vector{},runsettings::run_settings{FT}) where FT<:AbstractFloat
+function binning_1d(r_values_unsorted::Vector{},weights_unsorted::Vector{},runsettings::run_settings{FT}) where FT<:AbstractFloat
     bin_edges = runsettings.radius_bins_edges
 
     numdens::Vector{FT} = zeros(runsettings.num_bins)
-    idx = sortperm(values_unsorted)
-    values = values_unsorted[idx]
+    idx = sortperm(r_values_unsorted)
+    values = r_values_unsorted[idx]
     weights = weights_unsorted[idx]
 
     droplet_idx = 1

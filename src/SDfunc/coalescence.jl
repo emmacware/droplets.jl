@@ -75,7 +75,6 @@ Fields:
 """
 struct droplet_attributes{FT<:AbstractFloat}
     ξ::Vector{Int}
-    R::Vector{FT}
     X::Vector{FT}
 end
 
@@ -138,9 +137,8 @@ function init_ξ_const(settings::coag_settings{FT}) where FT<:AbstractFloat
     ξstart::Vector{Int} = (div(n0*ΔV,Ns)*ones(Ns))
     X0 = radius_to_volume(R0)# initial volume m3    
     Xstart::Vector{FT} = (rand(Exponential(X0), Ns))
-    Rstart::Vector{FT} = volume_to_radius.(Xstart)
 
-    droplets = droplet_attributes(ξstart, Rstart, Xstart)
+    droplets = droplet_attributes(ξstart, Xstart)
     return droplets
 end
 
@@ -205,7 +203,7 @@ function init_logarithmic(settings::coag_settings{FT})where FT<:AbstractFloat
     multiplicities = pdf_values .* bin_widths_new .* dvdr * (n0*ΔV)
     ξstart::Vector{Int} = floor.(multiplicities.+0.5)
 
-    droplets = droplet_attributes(ξstart, sd_radii, volumes)
+    droplets = droplet_attributes(ξstart, volumes)
     return droplets
 end
 
@@ -270,7 +268,7 @@ function init_uniform_sd(settings::coag_settings{FT})where FT<:AbstractFloat
     multiplicities = pdf_values .* bin_widths_new .* dvdr * (n0*ΔV)
     ξstart::Vector{Int} = floor.(multiplicities.+0.5)
 
-    droplets = droplet_attributes(ξstart, sd_radii, volumes)
+    droplets = droplet_attributes(ξstart, volumes)
     return droplets
 end
 
@@ -289,10 +287,9 @@ function init_monodisperse(settings::coag_settings{FT})where FT<:AbstractFloat
     n0 = settings.n0
     R0 = settings.R0
     ξstart::Vector{Int} = (div(n0*ΔV,Ns)*ones(Ns))
-    Rstart::Vector{FT} = (R0*ones(Ns))
-    Xstart::Vector{FT} = radius_to_volume.(Rstart)
+    Xstart::Vector{FT} = radius_to_volume(R0).*ones(Ns)
 
-    droplets = droplet_attributes(ξstart, Rstart, Xstart)
+    droplets = droplet_attributes(ξstart,Xstart)
     return droplets
 end
 
@@ -376,7 +373,7 @@ Hydronynamic kernel function for droplet coalescence, used to calculate the prob
 
 """
 @inline function hydrodynamic(droplets::droplet_attributes, (j,k)::Tuple{Int,Int}, settings::coag_settings{FT})::FT where FT<:AbstractFloat
-    Rj, Rk = droplets.R[j], droplets.R[k]
+    Rj, Rk = volume_to_radius(droplets.X[j]), volume_to_radius(droplets.X[k])
     if settings.hydrodynamic_collision_eff_func == true
         E = collision_efficiency(Rj,Rk)
     else    
@@ -446,7 +443,7 @@ end
 
 
 """
-    compute_pαdt!(L::Vector{Tuple{Int,Int}}, droplets::droplet_attributes, coag_data::coagulation_run, kernel::Function, coagsettings::coag_settings{FT}) where FT<:AbstractFloat
+    compute_pαdt!(L::Vector{Tuple{Int,Int}}, droplets::droplet_attributes, coag_data::coagulation_run, kernel::Function, scale::FT,scalecoagsettings::coag_settings{FT}) where FT<:AbstractFloat
 
 Map the probability function over the list of droplet pairs, L, and update the coagulation data in place.
 
@@ -455,12 +452,13 @@ Map the probability function over the list of droplet pairs, L, and update the c
 - `droplets::droplet_attributes`: Droplet attributes.
 - `coag_data::coagulation_run`: Coagulation data.
 - `kernel::Function`: Coalescence kernel function.
+- `scale::FT`: Scaling factor for the linear coalescence probability.
 - `coagsettings::coag_settings{FT}`: Coagulation settings.
 
 """
-@inline function compute_pαdt!(L::Vector{Tuple{Int,Int}}, droplets::droplet_attributes,coag_data::coagulation_run,kernel::Function,coagsettings::coag_settings{FT}) where FT<:AbstractFloat
+@inline function compute_pαdt!(L::Vector{Tuple{Int,Int}}, droplets::droplet_attributes,coag_data::coagulation_run,kernel::Function,scale::FT,coagsettings::coag_settings{FT}) where FT<:AbstractFloat
     map(i -> pair_Ps!(i, L[i], droplets,coag_data,kernel, coagsettings), eachindex(coag_data.pαdt))
-    coag_data.pαdt .*=  coagsettings.scale * coagsettings.Δt / coagsettings.ΔV
+    coag_data.pαdt .*=  scale * coagsettings.Δt / coagsettings.ΔV
 end
 
 @inline function pair_Ps!(α::Int, (j,k)::Tuple{Int,Int}, droplets::droplet_attributes,coag_data::coagulation_run,kernel::Function,coagsettings::coag_settings{FT}) where FT<:AbstractFloat
@@ -519,7 +517,7 @@ function coalescence_timestep!(run::Union{Serial, Parallel},scheme::none, drople
     shuffle!(coag_data.I)
     L = [(coag_data.I[l-1], coag_data.I[l]) for l in 2:2:Ns]
 
-    compute_pαdt!(L, droplets,coag_data,settings.kernel, settings)
+    compute_pαdt!(L, droplets,coag_data,settings.kernel,settings.scale,settings)
 
     rand!(coag_data.ϕ)
 
@@ -607,50 +605,33 @@ Perform the SDM coalescence update for the superdroplets when a coalesence event
 
 function sdm_update!(pair::Tuple{Int,Int},α::Int, droplets::droplet_attributes{FT},coag_data::coagulation_run) where FT<:AbstractFloat
 
-    if droplets.ξ[pair[1]] < droplets.ξ[pair[2]]
-        k = pair[1]
-        j = pair[2]
-    else
-        k = pair[2]
-        j = pair[1]
+    j,k = pair
+    if droplets.ξ[j] < droplets.ξ[k]
+        j,k = k,j
     end
 
     ξj, ξk = droplets.ξ[j], droplets.ξ[k]
     pα =  coag_data.pαdt[α]
 
     pα_floor::FT = @fastmath floor(pα)
-    γ::FT  = if coag_data.ϕ[α] < pα - pα_floor
-        pα_floor + 1
-    else
-        pα_floor
-    end
+    γ::FT  = coag_data.ϕ[α] < pα - pα_floor ? pα_floor +1 : pα_floor
 
-    floor_ξj_div_ξk = floor(ξj / ξk)
-    if γ >= floor_ξj_div_ξk
-        coag_data.deficit[] += (γ-floor_ξj_div_ξk)*ξk
+    if γ >= (floor_ξj_div_ξk = floor(ξj / ξk))
+        coag_data.deficit[] += (γ - floor_ξj_div_ξk) * ξk
         γ = floor_ξj_div_ξk
     end
-    # γ  = min(γ , floor(ξj / ξk))
-    ξ_j_minus_γ_tilde_ξ_k = ξj - γ  * ξk
 
-    if ξ_j_minus_γ_tilde_ξ_k > 0
-        droplets.ξ[j] = ξ_j_minus_γ_tilde_ξ_k
-        volume = γ * droplets.X[j] + droplets.X[k]
-        droplets.R[k] = volume_to_radius(volume)
-        droplets.X[k] = volume 
-    elseif ξ_j_minus_γ_tilde_ξ_k == 0
-        half_ξ_k = floor(ξk / 2)
-        droplets.ξ[j] = half_ξ_k
-        droplets.ξ[k] -= half_ξ_k
+    if ξj > γ * ξk
+        droplets.ξ[j] -= γ * ξk
+        droplets.X[k] = γ * droplets.X[j] + droplets.X[k]
+    else
+        droplets.ξ[j] = floor(ξk / 2)
+        droplets.ξ[k] -= droplets.ξ[j]
+        droplets.X[k] = droplets.X[j] = γ *droplets.X[j] + droplets.X[k]
 
-        volume = γ *droplets.X[j] + droplets.X[k]
-        droplets.R[j] = droplets.R[k] = volume_to_radius(volume)
-        droplets.X[k] = droplets.X[j] = volume
-        if half_ξ_k == 0
+        if droplets.ξ[j] == 0
             coag_data.lowest_zero[] = true
         end
-    else
-        println("nooooo")
     end
     return nothing
 end
@@ -668,12 +649,10 @@ Split the superdroplet with the highest multiplicity into two equal parts, as pr
 function split_highest_multiplicity!(droplets::droplet_attributes{FT}) where FT<:AbstractFloat
     if maximum(droplets.ξ) > 1
         while (minimum(droplets.ξ) <= 0 && maximum(droplets.ξ) > 1)
-            argmin_i = argmin(droplets.ξ)
-            argmax_i = argmax(droplets.ξ)
+            argmin_i, argmax_i = argmin(droplets.ξ), argmax(droplets.ξ)
             droplets.ξ[argmin_i] = floor(droplets.ξ[argmax_i]/2)
-            droplets.R[argmin_i] = droplets.R[argmax_i]
             droplets.X[argmin_i] = droplets.X[argmax_i]
-            # M[argmin_i] = M[argmax_i]
+
             droplets.ξ[argmax_i] -= floor(droplets.ξ[argmax_i]/2)
         end
     elseif (maximum(droplets.ξ) <= 1)

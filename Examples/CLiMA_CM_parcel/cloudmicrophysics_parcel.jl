@@ -10,8 +10,8 @@ using ComponentArrays
 include(joinpath(pkgdir(CM), "parcel", "Parcel.jl"))
 include("CM_sdfunctions.jl")
 
-FT = Float32
-Ns::Int = 2^14
+FT = Float64
+Ns = Int(2^14)
 
 # Get free parameters
 tps = TD.Parameters.ThermodynamicsParameters(FT)
@@ -89,7 +89,7 @@ for runs in run_parameters
     qₗ = ml_v / (md_v + mv_v + ml_v)
     qᵢ = FT(0)
     IC = [Sₗ, p₀, T₀, qᵥ, qₗ, qᵢ, Nₐ, Nₗ, Nᵢ, ln_INPC]
-    d_Y = ComponentVector{FT}(IC=IC,R =drops.R,ξ =drops.ξ, X =drops.X)
+    d_Y = ComponentVector{FT}(IC=IC,ξ =drops.ξ, X =drops.X)
 
     sol = run_parcel_sd(d_Y, FT(0), t_max, pp)
 
