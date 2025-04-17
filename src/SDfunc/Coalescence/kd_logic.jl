@@ -1,7 +1,6 @@
-using Distributions
-using Combinatorics
-using Random
-using Interpolations
+#---------------------------------------------------------
+# KinematicDriver.jl compatibility logic
+#---------------------------------------------------------
 using StaticArrays
 
 export coalescence_timestep!, static_droplet_attributes
@@ -27,7 +26,7 @@ function coalescence_timestep!(run::Serial,scheme::KiD, ξFT::SVector,X::SVector
         Ns = first_unhealthy_idx - 1
     end
     
-    droplets = droplet_attributes{FT}(Int.(Vector(ξFT[1:Ns])), Vector(X[1:Ns]))
+    droplets = droplet_attributes{FT}(Int.(floor.(Vector(ξFT))), Vector(X))
     
     I = shuffle(1:Ns)
     L = [(I[l-1], I[l]) for l in 2:2:Ns]

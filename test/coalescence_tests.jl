@@ -180,7 +180,7 @@ end
         coagsettings = coag_settings{FT}(Ns = 4)
 
         #act
-        compute_pαdt!(L,drops,coag_data,golovin,coagsettings)
+        compute_pαdt!(L,drops,coag_data,golovin,coagsettings.scale,coagsettings)
 
         #assert
         @test coag_data.pαdt[1] == 3*coagsettings.golovin_kernel_coeff*(X[1]+X[2])*(coagsettings.scale * coagsettings.Δt / coagsettings.ΔV)
@@ -214,7 +214,7 @@ end
         function test_tleft(sixdrops,coag_data,coagsettings,L,t_start,expected_tlims)
             t_left = Ref(t_start .+0)
             #act
-            adaptive_pαdt!(L,sixdrops,coag_data,t_left,golovin,coagsettings)
+            adaptive_pαdt!(L,sixdrops,coag_data,t_left,golovin,coagsettings.scale,coagsettings)
 
             #assert
             @test coag_data.pαdt[2] ≈ div(sixdrops.ξ[4], sixdrops.ξ[3])/expected_tlims[2] * expected_tlims[3]

@@ -10,7 +10,7 @@ using Test
     ξ = [Int(2),Int(3)]
     R = [FT(1.0),FT(2.0)]
     X = 3pi/4 .*R.^3
-    drops = droplet_attributes(ξ, X)
+    drops = droplet_attributes{FT}(ξ, X)
     coag_data = coagulation_run{FT}(Ns)
 
     @test golovin(drops, (1,2), coagsettings) == 1500*(X[1]+X[2])
