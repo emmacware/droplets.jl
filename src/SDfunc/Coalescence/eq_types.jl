@@ -49,27 +49,37 @@ Base.@kwdef struct coag_settings{FT<:AbstractFloat}
 end
 
 """
-    struct droplet_attributes{FT<:AbstractFloat}
+    abstract type droplet_attributes{FT<:AbstractFloat}
+"""
+abstract type droplet_attributes{FT<:AbstractFloat} end
 
-A struct representing the attributes of a droplet.
+"""
+    struct simple_droplet_attributes{FT<:AbstractFloat} <:droplet_attributes{FT}
+
+A struct of type droplet_attributes representing the attributes of a droplet.
 
 Fields:
 - FT: AbstractFloat.
 - ξ: Vector of integers representing the multiplicity of each droplet.
-- R: Vector of floats representing the radius of each droplet.
 - X: Vector of floats representing the volume of each droplet.
 
 """
-abstract type droplet_attributes{FT<:AbstractFloat} end
 
 struct simple_droplet_attributes{FT<:AbstractFloat} <:droplet_attributes{FT}
     ξ::Vector{Int}
     X::Vector{FT}
 end
 
-# Constructor function for droplet_attributes
+"""
+droplet_attributes{FT}(ξ::Vector{Int}, X::Vector{FT}) where {FT<:AbstractFloat}
+Create a new instance of simple_droplet_attributes with the given multiplicity and volume vectors.
+"""
 droplet_attributes{FT}(ξ::Vector{Int}, X::Vector{FT}) where {FT<:AbstractFloat} = 
     simple_droplet_attributes{FT}(ξ, X)
+"""
+droplet_attributes(ξ::Vector{Int}, X::Vector{FT}) where {FT<:AbstractFloat}
+Create a new instance of simple_droplet_attributes with the given multiplicity and volume vectors.
+"""
 droplet_attributes(ξ::Vector{Int}, X::Vector{FT}) where {FT<:AbstractFloat} = 
     simple_droplet_attributes{FT}(ξ, X)
 

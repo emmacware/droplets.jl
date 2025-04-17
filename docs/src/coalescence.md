@@ -5,6 +5,6 @@ Droplets.jl uses the Superdroplet method for coalescence [(Shima et al., 2009)](
 
 ```@autodocs
 Modules = [Droplets]
-Pages = ["src/SDFunc/Coalescence/coalescence.jl"]
-
+Public = true
+Pages = ["src/SDFunc/Coalescence/eq_types.jl"]
 ```
