@@ -8,7 +8,7 @@ FT = Float64
 function empty_drops(Ns;FT=FT)
     coagsettings = coag_settings{FT}(Ns = Ns)
     coagdata = coagulation_run{FT}(Ns)
-    drops = droplet_attributes{FT}(Int.(zeros(Ns)),zeros(Ns),zeros(Ns))
+    drops = droplet_attributes{FT}(Int.(zeros(Ns)),zeros(Ns))
     return drops,coagsettings,coagdata
 end
 
@@ -20,7 +20,6 @@ end
     function test_init_method(init_func, coagsettings)
         init_method = init_func(coagsettings)
         @test sum(init_method.ξ) ≈ coagsettings.n0*coagsettings.ΔV rtol = 1e-2
-        @test init_method.X ≈ radius_to_volume.(init_method.R)
 
         effective_vol = sum(init_method.X.*init_method.ξ) / (sum(init_method.ξ))
         effective_radius = volume_to_radius(effective_vol)
@@ -60,18 +59,17 @@ end
 
     function test_schemes(scheme, coag_data, coagsettings)
         Random.seed!()
-        ξ_const = init_ξ_const(coagsettings)
-        ctimestep = deepcopy(ξ_const)
+        ξ_const_droplets = init_ξ_const(coagsettings)
+        ctimestep = deepcopy(ξ_const_droplets)
         for _ in 1:50
             coalescence_timestep!(Serial(),scheme, ctimestep,coag_data, coagsettings)
         end
         # coag only
-        @test sum(ctimestep.ξ) <= sum(ξ_const.ξ)
+        @test sum(ctimestep.ξ) <= sum(ξ_const_droplets.ξ)
         # mass conservation:
-        @test sum(ctimestep.X.*ctimestep.ξ) ≈ sum(ξ_const.X.*ξ_const.ξ) rtol = 1e-12
+        @test sum(ctimestep.X.*ctimestep.ξ) ≈ sum(ξ_const_droplets.X.*ξ_const_droplets.ξ) rtol = 1e-12
         @test minimum(ctimestep.ξ) > 0
         @test minimum(ctimestep.X) > 0
-        @test minimum(ctimestep.R) > 0
     end
 
     test_schemes(none(),coag_data, coagsettings)
@@ -95,8 +93,7 @@ end
     function multiple_collisions(two_drops, two_drops_coag_data)
         #arrange
         two_drops.ξ .= [2,1]
-        two_drops.R .= [FT(1.5e-6), FT(1.5e-6)]
-        two_drops.X .= radius_to_volume.(two_drops.R)
+        two_drops.X .= 1.5e-15 * ones(2)
         X = two_drops.X .+0
         two_drops_coag_data.ϕ[1] = 0.5
         two_drops_coag_data.pαdt[1] = 2
@@ -109,14 +106,12 @@ end
         @test two_drops_coag_data.lowest_zero[] == true
         @test two_drops.ξ == [0,1]
         @test two_drops.X[1] == two_drops.X[2] == 2*X[1]+X[2]
-        @test two_drops.R == volume_to_radius.(two_drops.X)
     end
 
     function test_pairs_ξjminus_γtildeξk(two_drops, two_drops_coag_data)
         #arrange
         two_drops.ξ .= [6,2]
-        two_drops.R .= [FT(1.5e-6), FT(1.5e-6)]
-        two_drops.X .= radius_to_volume.(two_drops.R)
+        two_drops.X .= 1.5e-15 * ones(2)
         X = two_drops.X .+0
         two_drops_coag_data.ϕ[1] = 0.5
         two_drops_coag_data.pαdt[1] = 2
@@ -127,15 +122,13 @@ end
         @test two_drops.ξ == [2,2]
         @test two_drops.X[2] == 2*X[1]+X[2]
         @test two_drops.X[1] == X[1]
-        @test two_drops.R ≈ volume_to_radius.(two_drops.X)
     end
 
     # test deficit
     function test_deficit(two_drops, two_drops_coag_data)
         # arrange
         two_drops.ξ .= [8,4]
-        two_drops.R .= [FT(1.5e-6), FT(1.5e-6)]
-        two_drops.X .= radius_to_volume.(two_drops.R)
+        two_drops.X .= 1.5e-15 * ones(2)
         two_drops_coag_data.ϕ[1] = 0.5
         two_drops_coag_data.pαdt[1] = 3
         two_drops_coag_data.deficit[] = 0
@@ -153,14 +146,12 @@ end
         R = [FT(1.5e-6), FT(2.5e-6), FT(3.5e-6), FT(4.5e-6)]
         X = radius_to_volume.(R)
         four_drops.ξ .= ξ .+0
-        four_drops.R .= R .+0
         four_drops.X .= X .+0
 
         #act
         split_highest_multiplicity!(four_drops)
 
         @test four_drops.ξ == [2,1,2,2]
-        @test four_drops.R[1] == four_drops.R[4] == R[4]
         @test four_drops.X[1] == four_drops.X[4] == X[4]
     end
 
@@ -184,12 +175,12 @@ end
         ξ = [2,3,4,5]
         R = [1.5e-6,1.5e-6,1.5e-6,1.5e-6]
         X = radius_to_volume.(R)
-        drops = droplet_attributes{FT}(ξ.+0,R.+0,X.+0)
+        drops = droplet_attributes{FT}(ξ.+0,X.+0)
         coag_data = coagulation_run{FT}(4)
         coagsettings = coag_settings{FT}(Ns = 4)
 
         #act
-        compute_pαdt!(L,drops,coag_data,golovin,coagsettings)
+        compute_pαdt!(L,drops,coag_data,golovin,coagsettings.scale,coagsettings)
 
         #assert
         @test coag_data.pαdt[1] == 3*coagsettings.golovin_kernel_coeff*(X[1]+X[2])*(coagsettings.scale * coagsettings.Δt / coagsettings.ΔV)
@@ -200,7 +191,7 @@ end
         #arrange
         L = [(1,2),(3,4),(5,6)]
         sixdrops.ξ[1:6] .= [2e9,3e10,4e9,5e10,(7e13-1),7e13]
-        sixdrops.R[1:6] .= [3e-6,3e-6,3e-6,3e-6,3e-5,3e-5]
+        R = [3e-6,3e-6,3e-6,3e-6,3e-5,3e-5]
         sixdrops.X = radius_to_volume.(R)
         coag_data.ϕ[1:3] .= [0.5,1e-9,0.2]
         t_start = 100.0
@@ -223,7 +214,7 @@ end
         function test_tleft(sixdrops,coag_data,coagsettings,L,t_start,expected_tlims)
             t_left = Ref(t_start .+0)
             #act
-            adaptive_pαdt!(L,sixdrops,coag_data,t_left,golovin,coagsettings)
+            adaptive_pαdt!(L,sixdrops,coag_data,t_left,golovin,coagsettings.scale,coagsettings)
 
             #assert
             @test coag_data.pαdt[2] ≈ div(sixdrops.ξ[4], sixdrops.ξ[3])/expected_tlims[2] * expected_tlims[3]
