@@ -2,6 +2,6 @@
 
 ```@autodocs
 Modules = [Droplets]
-Files = ["src/SDFunc/Coalescence/kernels.jl"]
+Pages = ["src/SDFunc/Coalescence/kernels.jl"]
 
 ```
