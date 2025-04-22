@@ -1,6 +1,7 @@
 # 
 A Julia language implementation of the superdroplet method [(Shima et al., 2009)](https://doi.org/10.1002/qj.441).
-[![Build Status](https://github.com/emmacware/Superdroplet.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/emmacware/Superdroplet.jl/actions/workflows/CI.yml?query=branch%3Amain)
+[![Build Status](https://github.com/emmacware/Droplets.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/emmacware/Droplets.jl/actions/workflows/CI.yml?query=branch%3Amain)
+[![Coverage Status](https://codecov.io/gh/emmacware/Droplets.jl/branch/main/graph/badge.svg)](https://app.codecov.io/gh/emmacware/Droplets.jl)    
 ![alt text](JuliaSDM.svg)
 
 Current working microphysics include collision-coalescence using the superdroplet method, condensation, feedback on environmental variables (temperature, specific humidity, etc.), and superdroplet lagrangian transport.
