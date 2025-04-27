@@ -1,6 +1,15 @@
 push!(LOAD_PATH, "../")
 using Documenter, Droplets
 
+
+Coalescence = [
+        "SDM" => "coalescence.md",
+        "Kernels" => "kernels.md",
+]
+Condensation = [
+        "Condensation" => "condensation.md",
+]
+
 makedocs(
     sitename = "Droplets.jl",
     modules = [Droplets],
@@ -12,13 +21,5 @@ makedocs(
     ],
     clean = true,
 )
-
-Coalescence = [
-        "SDM" => "coalescence.md",
-        "Kernels" => "kernels.md",
-]
-Condensation = [
-        "Condensation" => "condensation.md",
-]
 
 deploydocs(repo = "github.com/emmacware/Droplets.jl.git",branch = "gh-pages", target = "build",forcepush=true)
